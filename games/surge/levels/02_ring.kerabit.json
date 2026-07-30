@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "clear_color": [0.05, 0.06, 0.14],
+  "ambient": [0.1, 0.1, 0.18],
+  "camera": {
+    "fov_y": 50.0,
+    "eye": [0.0, 12.5, 15.5],
+    "target": [0.0, 0.4, 0.0],
+    "near": 0.1,
+    "far": 100.0
+  },
+  "light": {
+    "direction": [-0.45, -1.0, 0.25],
+    "intensity": 1.4,
+    "color": [0.95, 0.96, 1.0]
+  },
+  "entities": [
+    {
+      "name": "ground",
+      "tags": ["ground"],
+      "mesh": { "type": "plane", "size": 18.0 },
+      "material": { "color": [0.14, 0.15, 0.22], "roughness": 0.93 },
+      "at": [0.0, 0.0, 0.0]
+    },
+    {
+      "name": "player",
+      "tags": ["player"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.35, 0.9, 1.0], "roughness": 0.3 },
+      "at": [0.0, 0.5, 0.0]
+    },
+    {
+      "name": "pillar_ne",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.28, 0.3, 0.42], "roughness": 0.65 },
+      "at": [4.5, 0.9, -4.5],
+      "scale": [1.6, 1.8, 1.6]
+    },
+    {
+      "name": "pillar_nw",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.28, 0.3, 0.42], "roughness": 0.65 },
+      "at": [-4.5, 0.9, -4.5],
+      "scale": [1.6, 1.8, 1.6]
+    },
+    {
+      "name": "pillar_se",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.28, 0.3, 0.42], "roughness": 0.65 },
+      "at": [4.5, 0.9, 4.5],
+      "scale": [1.6, 1.8, 1.6]
+    },
+    {
+      "name": "pillar_sw",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.28, 0.3, 0.42], "roughness": 0.65 },
+      "at": [-4.5, 0.9, 4.5],
+      "scale": [1.6, 1.8, 1.6]
+    },
+    {
+      "name": "rim_n",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.22, 0.24, 0.36], "roughness": 0.75 },
+      "at": [0.0, 0.55, -8.5],
+      "scale": [17.0, 1.1, 0.45]
+    },
+    {
+      "name": "rim_s",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.22, 0.24, 0.36], "roughness": 0.75 },
+      "at": [0.0, 0.55, 8.5],
+      "scale": [17.0, 1.1, 0.45]
+    },
+    {
+      "name": "rim_w",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.22, 0.24, 0.36], "roughness": 0.75 },
+      "at": [-8.5, 0.55, 0.0],
+      "scale": [0.45, 1.1, 16.5]
+    },
+    {
+      "name": "rim_e",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.22, 0.24, 0.36], "roughness": 0.75 },
+      "at": [8.5, 0.55, 0.0],
+      "scale": [0.45, 1.1, 16.5]
+    },
+    {
+      "name": "orbit_inner",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [1.0, 0.25, 0.35], "roughness": 0.5 },
+      "at": [2.8, 0.45, 0.0],
+      "scale": [1.0, 0.9, 1.0]
+    },
+    {
+      "name": "orbit_mid",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.95, 0.18, 0.4], "roughness": 0.5 },
+      "at": [5.2, 0.45, 0.0],
+      "scale": [1.15, 0.9, 1.15]
+    },
+    {
+      "name": "orbit_outer",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.9, 0.12, 0.45], "roughness": 0.5 },
+      "at": [0.0, 0.45, 6.4],
+      "scale": [1.2, 0.9, 1.2]
+    },
+    {
+      "name": "cross_x",
+      "tags": ["hazard", "slide_x"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.85, 0.08, 0.55], "roughness": 0.55 },
+      "at": [0.0, 0.4, -2.5],
+      "scale": [1.6, 0.8, 0.9]
+    },
+    {
+      "name": "cross_z",
+      "tags": ["hazard", "slide_z"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.8, 0.1, 0.5], "roughness": 0.55 },
+      "at": [-2.5, 0.4, 0.0],
+      "scale": [0.9, 0.8, 1.6]
+    },
+    {
+      "name": "cross_x2",
+      "tags": ["hazard", "slide_x"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.88, 0.14, 0.42], "roughness": 0.55 },
+      "at": [0.0, 0.4, 2.8],
+      "scale": [1.5, 0.8, 0.9]
+    }
+  ]
+}

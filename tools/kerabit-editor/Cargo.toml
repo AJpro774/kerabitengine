@@ -1,0 +1,27 @@
+[package]
+name = "kerabit-editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kerabit visual level editor (egui shell + 3D viewport)"
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "kerabit-editor"
+path = "src/main.rs"
+
+[dependencies]
+kerabit = { path = "../../crates/kerabit" }
+kerabit-render = { path = "../../crates/kerabit-render" }
+kerabit-assets = { path = "../../crates/kerabit-assets" }
+# Editor UI only — keep egui out of the public kerabit game API.
+egui = "0.31"
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
+egui-winit = "0.31"
+egui-wgpu = "0.31"
+wgpu = { workspace = true }
+rfd = "0.15"
+
+[lints]
+workspace = true

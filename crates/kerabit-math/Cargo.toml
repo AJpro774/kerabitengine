@@ -1,0 +1,13 @@
+[package]
+name = "kerabit-math"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Math types and helpers for Kerabit (glam re-exports)"
+rust-version.workspace = true
+
+[dependencies]
+glam = { workspace = true }
+
+[lints]
+workspace = true

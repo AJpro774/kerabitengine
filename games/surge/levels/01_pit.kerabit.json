@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "clear_color": [0.12, 0.04, 0.05],
+  "ambient": [0.18, 0.08, 0.08],
+  "camera": {
+    "fov_y": 52.0,
+    "eye": [0.0, 11.0, 14.0],
+    "target": [0.0, 0.4, 0.0],
+    "near": 0.1,
+    "far": 100.0
+  },
+  "light": {
+    "direction": [0.35, -1.0, -0.4],
+    "intensity": 1.35,
+    "color": [1.0, 0.92, 0.86]
+  },
+  "entities": [
+    {
+      "name": "ground",
+      "tags": ["ground"],
+      "mesh": { "type": "plane", "size": 16.0 },
+      "material": { "color": [0.22, 0.12, 0.12], "roughness": 0.94 },
+      "at": [0.0, 0.0, 0.0]
+    },
+    {
+      "name": "player",
+      "tags": ["player"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [1.0, 0.78, 0.22], "roughness": 0.35 },
+      "at": [0.0, 0.5, 0.0]
+    },
+    {
+      "name": "rim_n",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.35, 0.18, 0.16], "roughness": 0.7 },
+      "at": [0.0, 0.6, -7.5],
+      "scale": [15.0, 1.2, 0.5]
+    },
+    {
+      "name": "rim_s",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.35, 0.18, 0.16], "roughness": 0.7 },
+      "at": [0.0, 0.6, 7.5],
+      "scale": [15.0, 1.2, 0.5]
+    },
+    {
+      "name": "rim_w",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.35, 0.18, 0.16], "roughness": 0.7 },
+      "at": [-7.5, 0.6, 0.0],
+      "scale": [0.5, 1.2, 14.5]
+    },
+    {
+      "name": "rim_e",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.35, 0.18, 0.16], "roughness": 0.7 },
+      "at": [7.5, 0.6, 0.0],
+      "scale": [0.5, 1.2, 14.5]
+    },
+    {
+      "name": "spinner_a",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.95, 0.15, 0.2], "roughness": 0.55 },
+      "at": [3.5, 0.45, 0.0],
+      "scale": [1.1, 0.9, 1.1]
+    },
+    {
+      "name": "spinner_b",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.9, 0.2, 0.15], "roughness": 0.55 },
+      "at": [-3.5, 0.45, 0.0],
+      "scale": [1.1, 0.9, 1.1]
+    },
+    {
+      "name": "sweeper_x",
+      "tags": ["hazard", "slide_x"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.85, 0.1, 0.28], "roughness": 0.6 },
+      "at": [0.0, 0.4, 4.0],
+      "scale": [1.4, 0.8, 1.0]
+    },
+    {
+      "name": "sweeper_z",
+      "tags": ["hazard", "slide_z"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.85, 0.12, 0.22], "roughness": 0.6 },
+      "at": [4.0, 0.4, 0.0],
+      "scale": [1.0, 0.8, 1.4]
+    }
+  ]
+}

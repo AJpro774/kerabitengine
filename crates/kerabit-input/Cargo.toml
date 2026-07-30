@@ -1,0 +1,10 @@
+[package]
+name = "kerabit-input"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Input snapshot and key/mouse enums for Kerabit"
+rust-version.workspace = true
+
+[lints]
+workspace = true

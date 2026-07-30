@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "clear_color": [0.07, 0.08, 0.11],
+  "ambient": [0.14, 0.15, 0.18],
+  "camera": {
+    "fov_y": 55.0,
+    "eye": [0.0, 9.0, 12.0],
+    "target": [0.0, 0.4, 0.0],
+    "near": 0.1,
+    "far": 100.0
+  },
+  "light": {
+    "direction": [-0.4, -1.0, -0.2],
+    "intensity": 1.25,
+    "color": [1.0, 0.98, 0.94]
+  },
+  "entities": [
+    {
+      "name": "ground",
+      "tags": ["ground"],
+      "mesh": { "type": "plane", "size": 14.0 },
+      "material": { "color": [0.38, 0.4, 0.44], "roughness": 0.92 },
+      "at": [0.0, 0.0, 0.0]
+    },
+    {
+      "name": "player",
+      "tags": ["player"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.32, 0.86, 0.48], "roughness": 0.4 },
+      "at": [-5.5, 0.5, 0.0]
+    },
+    {
+      "name": "south_barrier",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [1.0, 0.55, 0.12], "roughness": 0.55 },
+      "at": [0.0, 0.75, 2.8],
+      "scale": [12.0, 1.5, 0.5]
+    },
+    {
+      "name": "north_barrier",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.95, 0.5, 0.15], "roughness": 0.55 },
+      "at": [0.0, 0.75, -2.8],
+      "scale": [12.0, 1.5, 0.5]
+    },
+    {
+      "name": "spike_a",
+      "tags": ["hazard"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.9, 0.12, 0.18], "roughness": 0.65 },
+      "at": [0.5, 0.45, 1.2],
+      "scale": [1.0, 0.9, 1.0]
+    },
+    {
+      "name": "goal",
+      "tags": ["goal"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.15, 0.85, 0.9], "roughness": 0.25 },
+      "at": [5.5, 0.3, 0.0],
+      "scale": [1.6, 0.6, 1.6]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[package]
+name = "reach"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reach — Kerabit flagship micro-game"
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "reach"
+path = "src/main.rs"
+
+[dependencies]
+kerabit = { path = "../../crates/kerabit" }
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "kerabit-assets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Asset loaders for Kerabit (OBJ / PNG / glTF lite)"
+rust-version.workspace = true
+
+[dependencies]
+kerabit-math = { workspace = true }
+kerabit-color = { workspace = true }
+kerabit-render = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+image = { workspace = true }
+tobj = { workspace = true }
+gltf = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "surge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Surge — Kerabit score-attack arena (survive the waves)"
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "surge"
+path = "src/main.rs"
+
+[dependencies]
+kerabit = { path = "../../crates/kerabit" }
+
+[lints]
+workspace = true

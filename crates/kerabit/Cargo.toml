@@ -1,0 +1,45 @@
+[package]
+name = "kerabit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kerabit — a lean native Rust 3D engine with a tiny game-facing API"
+rust-version.workspace = true
+
+[dependencies]
+kerabit-math = { workspace = true }
+kerabit-color = { workspace = true }
+kerabit-world = { workspace = true }
+kerabit-input = { workspace = true }
+kerabit-render = { workspace = true }
+kerabit-assets = { workspace = true }
+kerabit-physics = { workspace = true }
+kerabit-audio = { workspace = true }
+anyhow = { workspace = true }
+winit = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[[example]]
+name = "playground"
+path = "../../examples/playground.rs"
+
+[[example]]
+name = "load_mesh"
+path = "../../examples/load_mesh.rs"
+
+[[example]]
+name = "many_cubes"
+path = "../../examples/many_cubes.rs"
+
+[[example]]
+name = "physics_audio"
+path = "../../examples/physics_audio.rs"
+
+[[example]]
+name = "mini_game"
+path = "../../examples/mini_game.rs"
+
+[lints]
+workspace = true

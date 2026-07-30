@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kerabit — lean native Rust 3D engine</title>
+    <meta
+      name="description"
+      content="Kerabit is a simple-for-you, deep-underneath native Rust 3D game engine. Ship Reach. Author in the editor. Build on wgpu."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+        <a href="#play">Play</a>
+        <a href="#engine">Engine</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="brand" aria-label="Kerabit">Kerabit</p>
+        <h1>A 3D engine that stays small on the outside.</h1>
+        <p class="lede">
+          Native Rust. Tiny game API. Real wgpu depth — scenes, editor, physics,
+          audio, shadows — without dragging a 20GB toolchain into your life.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/AJpro774/kerabitengine"
+            >View on GitHub</a
+          >
+          <a class="btn ghost" href="#play">Play Reach</a>
+        </div>
+      </section>
+
+      <section id="play" class="band">
+        <h2>Reach &amp; Surge</h2>
+        <p>
+          Flagship micro-games ship with the engine. Author levels in
+          <code>kerabit-editor</code>, play on macOS, keep the challenge sharp.
+        </p>
+        <pre class="code"><code>cargo run -p reach
+cargo run -p surge
+cargo run -p kerabit-editor</code></pre>
+      </section>
+
+      <section id="engine" class="band">
+        <h2>Built for authors</h2>
+        <p>
+          Spawn meshes, light a scene, react to input. The hard parts — GPU
+          pipelines, world matrices, scene reload, soft shadows — stay inside
+          the crate.
+        </p>
+        <pre class="code"><code>Kerabit::new("Demo")
+    .spawn(Entity::new("cube").mesh(Mesh::cube()).at(0.0, 0.5, 0.0))
+    .camera(Camera::perspective(60.0).look_at([4.0, 3.0, 6.0], [0.0, 0.0, 0.0]))
+    .run(|ctx| { /* your game */ });</code></pre>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="https://github.com/AJpro774/kerabitengine">Source</a>
+    </footer>
+
+    <script>
+      const brand = document.querySelector(".brand");
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (brand && !reduce) {
+        brand.animate(
+          [
+            { opacity: 0, letterSpacing: "0.35em", transform: "translateY(12px)" },
+            { opacity: 1, letterSpacing: "0.06em", transform: "translateY(0)" },
+          ],
+          { duration: 1100, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" }
+        );
+      }
+      document.querySelectorAll(".hero h1, .hero .lede, .cta").forEach((el, i) => {
+        if (reduce) return;
+        el.animate(
+          [
+            { opacity: 0, transform: "translateY(18px)" },
+            { opacity: 1, transform: "translateY(0)" },
+          ],
+          {
+            duration: 800,
+            delay: 280 + i * 120,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "forwards",
+          }
+        );
+      });
+    </script>
+  </body>
+</html>

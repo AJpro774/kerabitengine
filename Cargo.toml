@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kerabit",
+    "crates/kerabit-math",
+    "crates/kerabit-color",
+    "crates/kerabit-world",
+    "crates/kerabit-input",
+    "crates/kerabit-render",
+    "crates/kerabit-assets",
+    "crates/kerabit-physics",
+    "crates/kerabit-audio",
+    "games/reach",
+    "games/surge",
+    "tools/kerabit-editor",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/caryn/Kerabit"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Math / color (P0)
+glam = "0.29"
+
+# Window + GPU (P1) — pinned for winit 0.30 / wgpu API stability
+wgpu = "24.0"
+winit = "0.30"
+bytemuck = { version = "1.21", features = ["derive"] }
+pollster = "0.4"
+anyhow = "1.0"
+thiserror = "2.0"
+raw-window-handle = "0.6"
+
+# Assets (P5) — lightweight loaders only (no editor / engine bundling)
+image = { version = "0.25", default-features = false, features = ["png"] }
+tobj = "4.0"
+gltf = { version = "1.4", default-features = false, features = ["utils", "import"] }
+
+# Audio (P6) — WAV-only decode to keep footprint lean (no mp3/flac/vorbis)
+rodio = { version = "0.20", default-features = false, features = ["wav"] }
+
+# Scene format (P7) — `.kerabit.json` save/load mirroring the public spawn API
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Workspace crates
+kerabit-math = { path = "crates/kerabit-math" }
+kerabit-color = { path = "crates/kerabit-color" }
+kerabit-world = { path = "crates/kerabit-world" }
+kerabit-input = { path = "crates/kerabit-input" }
+kerabit-render = { path = "crates/kerabit-render" }
+kerabit-assets = { path = "crates/kerabit-assets" }
+kerabit-physics = { path = "crates/kerabit-physics" }
+kerabit-audio = { path = "crates/kerabit-audio" }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
