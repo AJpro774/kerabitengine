@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    name: macOS (check + test)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Installs channel + components from rust-toolchain.toml
+      - uses: dtolnay/rust-toolchain@master
+      - name: Cargo check
+        run: cargo check --workspace
+      - name: Cargo test
+        run: cargo test --workspace
+
+  linux:
+    name: Ubuntu (check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+      - name: Install Linux window / input deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev
+      - name: Cargo check
+        run: cargo check --workspace

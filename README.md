@@ -4,7 +4,25 @@ Lean native Rust 3D engine: **simple for the game author, deep in the engine**.
 
 **Site:** [kerabitengine.vercel.app](https://kerabitengine.vercel.app) · **Repo:** [github.com/AJpro774/kerabitengine](https://github.com/AJpro774/kerabitengine)
 
-> **Status:** Phases **P0–P7** + editor roadmap **E0–E7**. Flagship: **Reach**. Second title: **Surge**.
+> **Status:** **Alpha v1.0** (`1.0.0-alpha.1`). Flagship: **Reach**. Second title: **Surge**.
+
+## Alpha v1.0
+
+Clone-and-cargo release for authors. Install is unchanged:
+
+1. Install [Rust stable](https://rustup.rs/) via `rustup` (toolchain pinned in `rust-toolchain.toml`)
+2. Working GPU drivers (Metal on macOS; Vulkan/Metal/DX12 via wgpu elsewhere)
+3. Clone and run:
+
+```bash
+git clone https://github.com/AJpro774/kerabitengine.git
+cd kerabitengine
+cargo run -p reach
+cargo run -p surge
+cargo run -p kerabit-editor
+```
+
+Frozen vs experimental public APIs: [API.md](API.md). Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Goals
 
@@ -51,7 +69,7 @@ cargo run -p kerabit --example playground
 cargo run -p kerabit-editor
 ```
 
-Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select, **W/E/R** for move/rotate/scale gizmos, optional snap 0.5, **Place cube** then click the ground plane. File → Save writes `.kerabit.json`. Editor is a **dev tool** — not bundled inside the shipped Reach.app.
+Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select, **W/E/R** for move/rotate/scale gizmos, optional snap 0.5, **Place cube** then click the ground plane. File → Save writes `.kerabit.json`. Use **Play** to run the current scene in-editor when available. Editor is a **dev tool** — not bundled inside the shipped Reach.app.
 
 ### Reach (flagship)
 
@@ -130,9 +148,10 @@ fn main() {
 | Doc | Purpose |
 |-----|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, frame loop, GPU model, phase status |
-| [API.md](API.md) | Public surface contract |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Multi-model ownership and accept gates |
+| [API.md](API.md) | Public surface contract + alpha freeze |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Ownership, editor workflow, accept gates |
 
 ## License
 
-MIT OR Apache-2.0
+MIT OR Apache-2.0 — see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).

@@ -1,11 +1,13 @@
 //! Editor application state and egui panels.
 
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
 
 use egui::{Color32, RichText, Ui};
 use kerabit::{
     Color, Quat, Scene, SceneCamera, SceneEntity, SceneLight, SceneMaterial, SceneMesh, Vec3,
 };
+use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 
 use crate::validation;
 use crate::viewport::Viewport;
@@ -48,6 +50,8 @@ pub struct EditorApp {
     status: String,
     rename_buf: String,
     viewport: Viewport,
+    /// Child `kerabit-editor --play <path>` process while play mode is active.
+    play_child: Option<Child>,
 }
 
 impl EditorApp {
@@ -60,6 +64,107 @@ impl EditorApp {
             status: "New scene".into(),
             rename_buf: String::new(),
             viewport: Viewport::new(),
+            play_child: None,
+        }
+    }
+
+    fn is_playing(&self) -> bool {
+        self.play_child.is_some()
+    }
+
+    /// Poll the play child; clear state when it exits (Escape / window close).
+    fn poll_play_child(&mut self) {
+        let Some(child) = self.play_child.as_mut() else {
+            return;
+        };
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                self.play_child = None;
+                self.status = if status.success() {
+                    "Play stopped — back to edit".into()
+                } else {
+                    format!("Play exited ({status})")
+                };
+            }
+            Ok(None) => {}
+            Err(err) => {
+                self.play_child = None;
+                self.status = format!("Play wait failed: {err}");
+            }
+        }
+    }
+
+    fn stop_play(&mut self) {
+        if let Some(mut child) = self.play_child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            self.status = "Play stopped — back to edit".into();
+        }
+    }
+
+    /// Ensure the scene is saved, then launch play via the same binary (`--play`).
+    fn play_scene(&mut self) {
+        if self.is_playing() {
+            self.status = "Already playing — Stop first".into();
+            return;
+        }
+
+        if self.dirty {
+            let result = MessageDialog::new()
+                .set_level(MessageLevel::Warning)
+                .set_title("Save before Play?")
+                .set_description(
+                    "The scene has unsaved changes. Save before playing?",
+                )
+                .set_buttons(MessageButtons::OkCancel)
+                .show();
+            match result {
+                MessageDialogResult::Ok => {
+                    self.save_scene();
+                    if self.dirty {
+                        // Save As cancelled or save failed.
+                        self.status = "Play cancelled — save the scene first".into();
+                        return;
+                    }
+                }
+                _ => {
+                    self.status = "Play cancelled".into();
+                    return;
+                }
+            }
+        }
+
+        if self.path.is_none() {
+            self.save_scene_as();
+            if self.path.is_none() || self.dirty {
+                self.status = "Play cancelled — save the scene first".into();
+                return;
+            }
+        }
+
+        let Some(path) = self.path.clone() else {
+            return;
+        };
+
+        let exe = match std::env::current_exe() {
+            Ok(e) => e,
+            Err(err) => {
+                self.status = format!("Play failed: current_exe: {err}");
+                return;
+            }
+        };
+
+        match Command::new(&exe).arg("--play").arg(&path).spawn() {
+            Ok(child) => {
+                self.play_child = Some(child);
+                self.status = format!(
+                    "Playing {} — Esc in play window or Stop to return",
+                    path.display()
+                );
+            }
+            Err(err) => {
+                self.status = format!("Play failed to launch: {err}");
+            }
         }
     }
 
@@ -322,6 +427,42 @@ impl EditorApp {
                     ui.close_menu();
                 }
             });
+            ui.menu_button("Play", |ui| {
+                let playing = self.is_playing();
+                if ui
+                    .add_enabled(
+                        !playing,
+                        egui::Button::new("Play Scene").shortcut_text("Ctrl+P"),
+                    )
+                    .clicked()
+                {
+                    self.play_scene();
+                    ui.close_menu();
+                }
+                if ui
+                    .add_enabled(playing, egui::Button::new("Stop").shortcut_text("Ctrl+."))
+                    .clicked()
+                {
+                    self.stop_play();
+                    ui.close_menu();
+                }
+            });
+            ui.separator();
+            let playing = self.is_playing();
+            if ui
+                .add_enabled(!playing, egui::Button::new("▶ Play"))
+                .on_hover_text("Play current scene (Ctrl+P)")
+                .clicked()
+            {
+                self.play_scene();
+            }
+            if ui
+                .add_enabled(playing, egui::Button::new("■ Stop"))
+                .on_hover_text("Stop play and return to edit (Ctrl+.)")
+                .clicked()
+            {
+                self.stop_play();
+            }
         });
     }
 
@@ -725,6 +866,8 @@ impl EditorApp {
         let mut save = false;
         let mut save_as = false;
         let mut new = false;
+        let mut play = false;
+        let mut stop = false;
         ctx.input(|i| {
             if i.modifiers.command && i.key_pressed(egui::Key::O) {
                 open = true;
@@ -736,6 +879,12 @@ impl EditorApp {
             }
             if i.modifiers.command && i.key_pressed(egui::Key::N) {
                 new = true;
+            }
+            if i.modifiers.command && i.key_pressed(egui::Key::P) {
+                play = true;
+            }
+            if i.modifiers.command && i.key_pressed(egui::Key::Period) {
+                stop = true;
             }
         });
         if open {
@@ -749,11 +898,18 @@ impl EditorApp {
         if new {
             self.new_scene();
         }
+        if play {
+            self.play_scene();
+        }
+        if stop {
+            self.stop_play();
+        }
     }
 }
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_play_child();
         self.handle_shortcuts(ctx);
 
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title()));
@@ -808,6 +964,15 @@ impl eframe::App for EditorApp {
                     .unwrap_or_default();
             }
         });
+
+        // Keep polling while a play child is alive.
+        if self.is_playing() {
+            ctx.request_repaint();
+        }
+    }
+
+    fn on_exit(&mut self) {
+        self.stop_play();
     }
 }
 

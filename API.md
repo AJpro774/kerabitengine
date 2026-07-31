@@ -1,8 +1,29 @@
 # Public API contract
 
-This document is the **stable target** for game-facing types. Names freeze after **P3**; changes require updating this file in the same change.
+This document is the **stable target** for game-facing types. Changes require updating this file in the same change.
 
-> **P7 status:** `.kerabit.json` scenes (`Scene` / `Kerabit::load_scene`) + flagship `reach` game. wgpu / winit types are not part of the public surface.
+> **Alpha `1.0.0-alpha.1`:** frozen vs experimental surfaces are listed below. wgpu / winit types are not part of the public surface.
+
+## Alpha freeze
+
+Breaking a **Frozen for alpha** item requires a new alpha minor bump (`1.0.0-alpha.N` → next) and a [CHANGELOG.md](CHANGELOG.md) entry in the same change.
+
+| Surface | Status | Notes |
+|---------|--------|-------|
+| `Kerabit` | **Frozen for alpha** | `new` / `clear_color` / `spawn` / `camera` / `light` / `ambient` / `scene` / `load_scene` / `run` |
+| `Entity` (spawn builder) | **Frozen for alpha** | `new` / `mesh` / `material` / `at` / `rotation` / `scale` / `parent` |
+| `Mesh` | **Frozen for alpha** | `cube` / `plane` / `load_obj` |
+| `Material` | **Frozen for alpha** | `color` / `roughness` / texture helpers |
+| `Scene`, `SceneError`, `SCENE_VERSION` | **Frozen for alpha** | `.kerabit.json` load/save; `into_kerabit` |
+| `Context` | **Frozen for alpha** | `dt` / `input` / `world` / `camera` / `physics` / `audio` / `ui` / `quit` / `apply_scene` / `load_scene` / spawn helpers |
+| `Ui` | **Frozen for alpha** | `text` / `rect` (normalized top-left coords) |
+| Physics (`PhysicsWorld`, `Aabb`, casts, `move_and_collide`) | **Frozen for alpha** | Static AABBs; no dynamic rigid bodies |
+| Audio (`AudioEngine`, `SoundId`) | **Frozen for alpha** | WAV play / volume / null fallback |
+| Math / color (`Vec3`, `Quat`, `Color`, …) | **Frozen for alpha** | Via prelude |
+| `Camera`, `Light`, `Key`, `InputState` | **Frozen for alpha** | Game-facing input + view/light setup |
+| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change without alpha bump |
+| Surge motion tags (`orbit`, `slide_x`, `slide_z`) | **Experimental** | Game convention used by Surge; not a general engine contract |
+| Anything marked unstable / internal | **Experimental** | Do not depend on from published games without pinning |
 
 ## Intended usage (P3+)
 
@@ -180,6 +201,7 @@ No wgpu / winit types. No FreeType — glyphs come from an in-repo 8×8 atlas.
 
 ## Stability notes
 
+- **Alpha freeze:** see the table at the top of this file. Breaking frozen items needs a new alpha bump + CHANGELOG.
 - Do not expand the public API without updating this file.
 - Examples must compile against the public API only.
 - wgpu leakage in public rustdoc is an accept-gate failure.

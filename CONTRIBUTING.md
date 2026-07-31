@@ -1,40 +1,28 @@
 # Contributing
 
-Kerabit is designed for **multi-model / multi-session** work: own a crate or a phase, not the whole engine.
+Kerabit is designed for **multi-model / multi-session** work: own a crate or a feature, not the whole engine.
 
 ## Operating rules
 
-1. **Own a crate or a phase.** Prefer PRs/commits scoped to one plan todo id (e.g. `p1-pipeline`).
-2. **Do not expand the public API** without updating [API.md](API.md) in the same change.
-3. **Never expose `wgpu::*` or `winit::*`** from `kerabit`’s public surface (except a documented advanced module later — not before P4).
+1. **Own a crate or a feature.** Prefer PRs/commits scoped to one clear change.
+2. **Do not expand or break the public API** without updating [API.md](API.md) in the same change. Breaking a **Frozen for alpha** item also needs a new alpha bump + [CHANGELOG.md](CHANGELOG.md) entry — see the freeze table in API.md.
+3. **Never expose `wgpu::*` or `winit::*`** from `kerabit`’s public surface (except a documented advanced module later).
 4. **Shaders** live in `crates/kerabit-render/shaders/` as `.wgsl`, included via `include_str!`.
 5. **Examples** must compile against the public API only.
-6. **Accept gate before next phase:** `cargo test` + relevant `cargo run --example …` must pass.
+6. **Accept gate:** `cargo test --workspace` (and relevant `cargo run -p …` smoke) must pass.
 7. **No drive-by refactors** of crates you do not own in that session.
 8. **New dependencies** need a one-line justification in [ARCHITECTURE.md](ARCHITECTURE.md) “Deps” and must respect the size budget.
 
-## Phase ownership (suggested)
-
-| Session | Own |
-|---------|-----|
-| A | P0 workspace + docs |
-| B | P0 math + color |
-| C | P1 render window/pipeline (after workspace) |
-| D | P2 world (after math) |
-| E | P2 mesh/camera/light (after vertex layout freeze) |
-| F | P3 facade + input + playground |
-| G | P4+ / P5+ as separate tracks |
-
-Merge order: **P0 → P1 → (P2 world ∥ P2 render scene) → P3 → P4/P5 parallel → P6 → P7**.
-
-## Content (levels)
+## Editor workflow
 
 Author and edit playable scenes in **`kerabit-editor`** (`cargo run -p kerabit-editor`), not by hand-editing JSON unless necessary.
 
-- **Reach** — `games/reach/levels/`, registered in `games/reach/src/main.rs` (`LEVEL_FILES`). Tags: `player`, `goal`, `ground`, `wall`, `hazard`. Keep unit-cube players (`half = 0.5`) and leave dodge gaps ≥ **1.0**.
-- **Surge** — `games/surge/levels/`, registered in `games/surge/src/main.rs`. Same role tags (no `goal`); hazard motion tags: `orbit`, `slide_x`, `slide_z`.
+- Open levels under `games/reach/levels/` or `games/surge/levels/`.
+- File → Save writes `.kerabit.json`. Prefer **Play** in the editor to smoke a scene when available.
+- **Reach** — registered in `games/reach/src/main.rs` (`LEVEL_FILES`). Tags: `player`, `goal`, `ground`, `wall`, `hazard`. Keep unit-cube players (`half = 0.5`) and leave dodge gaps ≥ **1.0**.
+- **Surge** — registered in `games/surge/src/main.rs`. Same role tags (no `goal`); hazard motion tags: `orbit`, `slide_x`, `slide_z` (experimental — see API.md).
 
-## Packaging (Reach / E6)
+## Packaging (Reach)
 
 ```bash
 ./scripts/package-reach.sh          # release build + dist/Reach.app + Reach-macos.zip
@@ -43,28 +31,21 @@ Author and edit playable scenes in **`kerabit-editor`** (`cargo run -p kerabit-e
 
 Accept: unzip `dist/Reach-macos.zip` on a Mac and double-click **Reach.app** (no terminal). Icon from `games/reach/packaging/AppIcon.png`. Do not commit `dist/`.
 
-## Accept gates (current)
-
-| Phase | Gate |
-|-------|------|
-| P0 | `cargo build -p kerabit` succeeds; no window yet |
-| **P1** | Visible shaded cube; resize safe — `cargo run -p kerabit-render --example hardcoded_cube` |
-| P2 | Transform unit tests; multiple meshes |
-| P3 | Playground demo; API.md matches code; no wgpu in public rustdoc |
-| **E6** | `./scripts/package-reach.sh` produces `Reach.app`; levels/assets load from bundle Resources |
-
-## Local checks (P1)
+## Local checks
 
 ```bash
-cargo build -p kerabit -p kerabit-render
-cargo test -p kerabit-math -p kerabit-color
-cargo run -p kerabit-render --example hardcoded_cube
+cargo check --workspace
+cargo test --workspace
+cargo run -p reach
+cargo run -p surge
+cargo run -p kerabit-editor
 ```
 
-Prefer `cargo fmt` / `clippy -D warnings` once P1 is green.
+Prefer `cargo fmt` / `clippy -D warnings` before opening a PR. CI runs check+test on macOS and check on Ubuntu (see `.github/workflows/ci.yml`).
 
 ## What not to do
 
 - Do not edit the plan file as a substitute for shipping code.
 - Do not commit `target/`, secrets, or large binary assets.
 - Do not pull in Bevy/Unity/Godot or other full engines as dependencies.
+- Do not invent a new install path — authors use `rustup` + `git clone` + `cargo run -p …`.

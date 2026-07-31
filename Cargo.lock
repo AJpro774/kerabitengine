@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "kerabit-assets",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-assets"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "gltf",
@@ -1645,7 +1645,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-audio"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "rodio",
  "thiserror 2.0.19",
@@ -1653,11 +1653,11 @@ dependencies = [
 
 [[package]]
 name = "kerabit-color"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 
 [[package]]
 name = "kerabit-editor"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "eframe",
  "egui",
@@ -1672,25 +1672,25 @@ dependencies = [
 
 [[package]]
 name = "kerabit-input"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 
 [[package]]
 name = "kerabit-math"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "glam",
 ]
 
 [[package]]
 name = "kerabit-physics"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "kerabit-math",
 ]
 
 [[package]]
 name = "kerabit-render"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-world"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "kerabit-math",
 ]
@@ -2617,7 +2617,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "reach"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "kerabit",
 ]
@@ -3053,7 +3053,7 @@ dependencies = [
 
 [[package]]
 name = "surge"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "kerabit",
 ]
