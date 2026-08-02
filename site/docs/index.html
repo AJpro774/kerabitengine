@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Docs — Kerabit</title>
+    <meta
+      name="description"
+      content="Kerabit docs: Getting Started, API tour, and Editor guide. Install stays rustup + cargo."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="/#download">Download</a>
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="docs">
+      <p class="docs-kicker">Documentation</p>
+      <h1>Learn Kerabit in one sitting</h1>
+      <p class="docs-lede">
+        Same install as the README: <a href="https://rustup.rs/">rustup</a>, clone,
+        then <code>cargo run</code>. No alternate installer.
+      </p>
+
+      <ul class="docs-cards">
+        <li>
+          <a href="/docs/getting-started">
+            <strong>Getting Started</strong>
+            <span>Site → clone → hello cube → editor in under 30 minutes.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/docs/api-tour">
+            <strong>API tour</strong>
+            <span>Spawn, lights, scenes, input, physics, audio — the public surface.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/docs/editor">
+            <strong>Editor guide</strong>
+            <span>Viewport, gizmos, Play, undo, prefabs, and Reach levels.</span>
+          </a>
+        </li>
+      </ul>
+
+      <p class="docs-foot-links">
+        Deeper contracts live in the repo:
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/API.md">API.md</a>,
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a>,
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/CHANGELOG.md">CHANGELOG.md</a>,
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/ROADMAP.md">ROADMAP.md</a>.
+      </p>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="/">Home</a>
+    </footer>
+  </body>
+</html>

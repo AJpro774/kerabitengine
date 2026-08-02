@@ -18,6 +18,9 @@ pub struct Entity {
     pub(crate) rotation: Quat,
     pub(crate) scale: Vec3,
     pub(crate) parent: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) layer: u32,
+    pub(crate) enabled: bool,
 }
 
 impl Entity {
@@ -31,6 +34,9 @@ impl Entity {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
             parent: None,
+            tags: Vec::new(),
+            layer: kerabit_world::LAYER_DEFAULT,
+            enabled: true,
         }
     }
 
@@ -69,6 +75,33 @@ impl Entity {
     /// Local translation from [`Self::at`] is relative to the parent.
     pub fn parent(mut self, name: impl Into<String>) -> Self {
         self.parent = Some(name.into());
+        self
+    }
+
+    /// Replace gameplay tags applied at spawn.
+    pub fn tags(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.tags = tags.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Add a single tag at spawn.
+    pub fn tag(mut self, tag: impl Into<String>) -> Self {
+        let tag = tag.into();
+        if !self.tags.iter().any(|t| t == &tag) {
+            self.tags.push(tag);
+        }
+        self
+    }
+
+    /// Bitmask layer applied at spawn (default [`kerabit_world::LAYER_DEFAULT`]).
+    pub fn layer(mut self, layer: u32) -> Self {
+        self.layer = layer;
+        self
+    }
+
+    /// Whether the entity starts enabled (drawn / queryable as enabled).
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
         self
     }
 }

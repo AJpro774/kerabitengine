@@ -11,6 +11,9 @@ mod app;
 mod gizmo;
 mod orbit;
 mod play;
+mod selection;
+mod settings;
+mod undo;
 mod validation;
 mod viewport;
 

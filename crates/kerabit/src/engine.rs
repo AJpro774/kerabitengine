@@ -11,7 +11,9 @@ use kerabit_color::Color;
 use kerabit_input::InputState;
 use kerabit_math::vec3;
 use kerabit_physics::PhysicsWorld;
-use kerabit_render::{Camera, DrawItem, GpuState, Light, MeshId, SurfaceError, TextureId};
+use kerabit_render::{
+    clamp_lights, Camera, DrawItem, GpuState, Light, MeshId, SurfaceError, TextureId,
+};
 use kerabit_world::{EntityId, Transform, World};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, MouseScrollDelta, WindowEvent};
@@ -41,8 +43,12 @@ pub struct Kerabit {
     clear_color: Color,
     pending: Vec<Entity>,
     camera: Camera,
-    light: Light,
+    /// Active lights (1..=[`MAX_LIGHTS`]). Index 0 is the primary / shadow sun when directional.
+    lights: Vec<Light>,
     ambient: Color,
+    window_size: (u32, u32),
+    /// When set, dump RGBA PNG frames each tick (fixed 1/30 dt) for trailers.
+    capture_dir: Option<std::path::PathBuf>,
 }
 
 impl Kerabit {
@@ -53,9 +59,23 @@ impl Kerabit {
             clear_color: Color::rgb(0.08, 0.09, 0.12),
             pending: Vec::new(),
             camera: Camera::perspective(60.0).look_at(vec3(5.0, 3.0, 7.0), kerabit_math::Vec3::ZERO),
-            light: Light::sun(vec3(-0.35, -1.0, -0.25)).intensity(1.2),
+            lights: vec![Light::sun(vec3(-0.35, -1.0, -0.25)).intensity(1.2)],
             ambient: Color::rgb(0.15, 0.16, 0.18),
+            window_size: (960, 640),
+            capture_dir: None,
         }
+    }
+
+    /// Physical window size in pixels (default 960×640).
+    pub fn window_size(mut self, width: u32, height: u32) -> Self {
+        self.window_size = (width.max(1), height.max(1));
+        self
+    }
+
+    /// Dump a PNG sequence under `dir` each frame (fixed 30 FPS dt). Creates `dir`.
+    pub fn capture_frames(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.capture_dir = Some(dir.into());
+        self
     }
 
     /// Framebuffer clear color.
@@ -76,9 +96,24 @@ impl Kerabit {
         self
     }
 
-    /// Set the directional sun light.
+    /// Set the primary directional sun (replaces light slot 0; keeps extras).
     pub fn light(mut self, light: Light) -> Self {
-        self.light = light;
+        if self.lights.is_empty() {
+            self.lights.push(light);
+        } else {
+            self.lights[0] = light;
+        }
+        self
+    }
+
+    /// Replace the full light list (truncated to [`MAX_LIGHTS`] = 4).
+    ///
+    /// Soft shadows use the first directional light only. Point lights are unshadowed.
+    pub fn lights(mut self, lights: impl IntoIterator<Item = Light>) -> Self {
+        self.lights = clamp_lights(&lights.into_iter().collect::<Vec<_>>());
+        if self.lights.is_empty() {
+            self.lights.push(Light::sun(vec3(-0.35, -1.0, -0.25)).intensity(1.2));
+        }
         self
     }
 
@@ -90,6 +125,9 @@ impl Kerabit {
 
     /// Open a window and run `update` every frame until quit / close.
     ///
+    /// When [`Self::capture_frames`] is set, runs **headless** (no window) at a
+    /// fixed 30 FPS and writes a PNG sequence — used for marketing trailers.
+    ///
     /// Safe to call more than once in the same process: the winit event loop is
     /// created once and re-entered on later calls. For level transitions prefer
     /// [`Context::apply_scene`] / [`Context::load_scene`] inside a single `run`
@@ -100,6 +138,13 @@ impl Kerabit {
     where
         F: FnMut(&mut Context<'_>) + 'static,
     {
+        if self.capture_dir.is_some() {
+            if let Err(err) = run_headless_inner(self, update) {
+                eprintln!("kerabit: {err:#}");
+                std::process::exit(1);
+            }
+            return;
+        }
         if let Err(err) = run_inner(self, update) {
             eprintln!("kerabit: {err:#}");
             std::process::exit(1);
@@ -112,6 +157,8 @@ pub(crate) struct Renderable {
     material: Material,
     /// GPU handle for [`Material::albedo_texture`], if any.
     albedo_texture: Option<TextureId>,
+    /// GPU handle for [`Material::normal_texture`], if any.
+    normal_texture: Option<TextureId>,
 }
 
 struct App<F> {
@@ -119,10 +166,11 @@ struct App<F> {
     clear_color: Color,
     pending: Vec<Entity>,
     camera: Camera,
-    light: Light,
+    lights: Vec<Light>,
     ambient: Color,
     update: F,
     window: Option<Arc<Window>>,
+    window_size: (u32, u32),
     gpu: Option<GpuState>,
     world: World,
     physics: PhysicsWorld,
@@ -132,6 +180,8 @@ struct App<F> {
     ui: Ui,
     last_frame: Instant,
     quit: bool,
+    capture_dir: Option<std::path::PathBuf>,
+    capture_frame: u32,
 }
 
 impl<F> ApplicationHandler for App<F>
@@ -145,13 +195,19 @@ where
 
         let attrs = Window::default_attributes()
             .with_title(self.title.clone())
-            .with_inner_size(winit::dpi::LogicalSize::new(960.0, 640.0));
+            .with_inner_size(winit::dpi::PhysicalSize::new(
+                self.window_size.0,
+                self.window_size.1,
+            ));
 
         match event_loop.create_window(attrs) {
             Ok(window) => {
                 let window = Arc::new(window);
                 match GpuState::new(window.clone(), self.clear_color) {
                     Ok(mut gpu) => {
+                        if self.capture_dir.is_some() {
+                            gpu.enable_frame_capture();
+                        }
                         if let Err(err) = spawn_pending(self, &mut gpu) {
                             eprintln!("kerabit: failed to spawn scene: {err:#}");
                             event_loop.exit();
@@ -244,8 +300,14 @@ where
 {
     fn tick_frame(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
-        let dt = (now - self.last_frame).as_secs_f32().min(0.1);
+        let real_dt = (now - self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
+        // Fixed 30 FPS when dumping frames so the loop encodes cleanly.
+        let dt = if self.capture_dir.is_some() {
+            1.0 / 30.0
+        } else {
+            real_dt
+        };
 
         {
             self.ui.clear();
@@ -260,13 +322,14 @@ where
                 quit: &mut self.quit,
                 gpu: self.gpu.as_mut(),
                 renderables: &mut self.renderables,
-                light: &mut self.light,
+                lights: &mut self.lights,
                 ambient: &mut self.ambient,
                 clear_color: &mut self.clear_color,
             };
             (self.update)(&mut ctx);
         }
 
+        self.audio.maintain();
         self.input.end_frame();
 
         if self.quit {
@@ -282,14 +345,32 @@ where
             return;
         };
 
-        match gpu.render(
+        gpu.update_particles(dt);
+
+        match gpu.render_lights(
             &mut self.camera,
-            &self.light,
+            &self.lights,
             self.ambient,
             &draws,
             self.ui.commands(),
         ) {
-            Ok(()) => {}
+            Ok(()) => {
+                if let Some(dir) = self.capture_dir.as_ref() {
+                    if let Some((w, h, rgba)) = gpu.take_captured_rgba() {
+                        let path = dir.join(format!("frame_{:05}.png", self.capture_frame));
+                        self.capture_frame += 1;
+                        if let Err(err) = image::save_buffer(
+                            &path,
+                            &rgba,
+                            w,
+                            h,
+                            image::ColorType::Rgba8,
+                        ) {
+                            eprintln!("kerabit: failed to write {}: {err}", path.display());
+                        }
+                    }
+                }
+            }
             Err(SurfaceError::Lost | SurfaceError::Outdated) => {
                 let size = self
                     .window
@@ -333,18 +414,28 @@ pub(crate) fn spawn_entities(
             .material
             .albedo_texture()
             .map(|tex| gpu.upload_texture_rgba8(tex.width, tex.height, &tex.rgba));
+        let normal_texture = desc
+            .material
+            .normal_texture()
+            .map(|tex| gpu.upload_texture_rgba8_linear(tex.width, tex.height, &tex.rgba));
         let transform = Transform::from_trs(desc.translation, desc.rotation, desc.scale);
         let name = desc.name.clone();
         if let Some(parent) = desc.parent {
             parent_links.push((name.clone(), parent));
         }
         let id = world.spawn_named(name, transform);
+        if let Some(entity) = world.get_mut_by_id(id) {
+            entity.set_tags(desc.tags);
+            entity.set_layer(desc.layer);
+            entity.set_enabled(desc.enabled);
+        }
         renderables.insert(
             id,
             Renderable {
                 mesh: mesh_id,
                 material: desc.material,
                 albedo_texture,
+                normal_texture,
             },
         );
         ids.push(id);
@@ -367,18 +458,112 @@ fn build_draw_list(
 ) -> Vec<DrawItem> {
     let mut draws = Vec::with_capacity(renderables.len());
     for entity in world.iter() {
+        if !entity.is_enabled() {
+            continue;
+        }
         let Some(r) = renderables.get(&entity.id()) else {
             continue;
         };
         let model = entity.transform.world_matrix_cached();
         let mut item = DrawItem::new(r.mesh, model, r.material.albedo())
-            .with_roughness(r.material.roughness_factor());
+            .with_roughness(r.material.roughness_factor())
+            .with_metallic(r.material.metallic_factor());
         if let Some(tex) = r.albedo_texture {
             item = item.with_texture(tex);
+        }
+        if let Some(tex) = r.normal_texture {
+            item = item.with_normal_map(tex);
         }
         draws.push(item);
     }
     draws
+}
+
+fn run_headless_inner<F>(builder: Kerabit, mut update: F) -> Result<()>
+where
+    F: FnMut(&mut Context<'_>),
+{
+    let dir = builder
+        .capture_dir
+        .clone()
+        .context("capture_dir required for headless record")?;
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("create capture dir {}", dir.display()))?;
+
+    let (width, height) = builder.window_size;
+    let mut gpu = GpuState::new_headless(width, height, builder.clear_color)
+        .context("headless GPU init failed")?;
+
+    let mut world = World::new();
+    let mut renderables = HashMap::new();
+    let mut physics = PhysicsWorld::new();
+    let mut audio = AudioEngine::new();
+    let mut camera = builder.camera;
+    let mut lights = builder.lights;
+    let mut ambient = builder.ambient;
+    let mut clear_color = builder.clear_color;
+    let mut ui = Ui::new();
+    let input = InputState::new();
+    let mut quit = false;
+    let mut frame_idx = 0u32;
+
+    spawn_entities(&mut world, &mut renderables, &mut gpu, builder.pending)
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
+
+    eprintln!(
+        "kerabit: headless capture {}×{} → {} @ 30fps",
+        width,
+        height,
+        dir.display()
+    );
+
+    // Safety cap: 30s wall of sim time even if quit is never set.
+    const MAX_FRAMES: u32 = 30 * 30;
+    while !quit && frame_idx < MAX_FRAMES {
+        let dt = 1.0 / 30.0;
+        ui.clear();
+        {
+            let mut ctx = Context {
+                dt,
+                input: &input,
+                world: &mut world,
+                camera: &mut camera,
+                physics: &mut physics,
+                audio: &mut audio,
+                ui: &mut ui,
+                quit: &mut quit,
+                gpu: Some(&mut gpu),
+                renderables: &mut renderables,
+                lights: &mut lights,
+                ambient: &mut ambient,
+                clear_color: &mut clear_color,
+            };
+            update(&mut ctx);
+        }
+        audio.maintain();
+        if quit {
+            break;
+        }
+
+        world.update_world_matrices();
+        let draws = build_draw_list(&world, &renderables);
+        gpu.update_particles(dt);
+        gpu.render_lights(&mut camera, &lights, ambient, &draws, ui.commands())
+            .map_err(|e| anyhow::anyhow!("render failed: {e:?}"))?;
+
+        if let Some((w, h, rgba)) = gpu.take_captured_rgba() {
+            let path = dir.join(format!("frame_{frame_idx:05}.png"));
+            image::save_buffer(&path, &rgba, w, h, image::ColorType::Rgba8)
+                .with_context(|| format!("write {}", path.display()))?;
+        }
+        frame_idx += 1;
+        if frame_idx % 30 == 0 {
+            eprintln!("kerabit: captured {frame_idx} frames…");
+        }
+    }
+
+    eprintln!("kerabit: wrote {frame_idx} frames to {}", dir.display());
+    Ok(())
 }
 
 fn run_inner<F>(builder: Kerabit, update: F) -> Result<()>
@@ -398,10 +583,11 @@ where
             clear_color: builder.clear_color,
             pending: builder.pending,
             camera: builder.camera,
-            light: builder.light,
+            lights: builder.lights,
             ambient: builder.ambient,
             update,
             window: None,
+            window_size: builder.window_size,
             gpu: None,
             world: World::new(),
             physics: PhysicsWorld::new(),
@@ -411,7 +597,14 @@ where
             ui: Ui::new(),
             last_frame: Instant::now(),
             quit: false,
+            capture_dir: builder.capture_dir.clone(),
+            capture_frame: 0,
         };
+
+        if let Some(dir) = app.capture_dir.as_ref() {
+            std::fs::create_dir_all(dir)
+                .with_context(|| format!("create capture dir {}", dir.display()))?;
+        }
 
         event_loop
             .run_app_on_demand(&mut app)

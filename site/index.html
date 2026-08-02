@@ -17,16 +17,31 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="hero-media" aria-hidden="true">
+      <video
+        class="hero-video"
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="metadata"
+        poster=""
+      >
+        <source src="/media/showcase-loop.webm" type="video/webm" />
+        <source src="/media/showcase-loop.mp4" type="video/mp4" />
+      </video>
+      <div class="hero-media-fade"></div>
+    </div>
     <div class="atmosphere" aria-hidden="true"></div>
     <div class="grid" aria-hidden="true"></div>
 
     <header class="nav">
       <a class="nav-brand" href="/">Kerabit</a>
       <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="#download">Download</a>
         <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
         <a href="#install">Install</a>
-        <a href="#play">Play</a>
-        <a href="#engine">Engine</a>
       </nav>
     </header>
 
@@ -39,15 +54,18 @@
           audio, shadows — without dragging a 20GB toolchain into your life.
         </p>
         <div class="cta">
-          <a class="btn primary" href="https://github.com/AJpro774/kerabitengine"
+          <a class="btn primary" href="/docs/getting-started">Start in 30 min</a>
+          <a class="btn ghost" href="https://github.com/AJpro774/kerabitengine"
             >View on GitHub</a
           >
-          <a class="btn ghost" href="#install">Clone &amp; run</a>
         </div>
+        <p class="hero-credit">
+          <a href="https://github.com/AJpro774/kerabitengine">github.com/AJpro774/kerabitengine</a>
+        </p>
       </section>
 
       <section id="install" class="band">
-        <h2>Alpha v1.0 — clone &amp; cargo</h2>
+        <h2>Alpha — clone &amp; cargo</h2>
         <p>
           Install Rust stable via
           <a href="https://rustup.rs/">rustup</a>, then clone and run. Same
@@ -55,20 +73,120 @@
         </p>
         <pre class="code"><code>git clone https://github.com/AJpro774/kerabitengine.git
 cd kerabitengine
-cargo run -p reach
-cargo run -p surge
-cargo run -p kerabit-editor</code></pre>
+cargo run -p kerabit --example hello
+cargo run -p kerabit-editor
+cargo run -p reach</code></pre>
+        <p class="note">
+          Full stranger path (site → hello → editor):
+          <a href="/docs/getting-started">Getting Started</a>.
+        </p>
+      </section>
+
+      <section id="download" class="band">
+        <h2>Download Reach</h2>
+        <p>
+          Player zips need no Rust toolchain. Unzip and run. Authors who want to
+          rebuild locally use the packaging scripts in the repo.
+        </p>
+        <div class="download-row">
+          <a
+            class="btn primary"
+            href="https://github.com/AJpro774/kerabitengine/releases/latest"
+            >GitHub Releases</a
+          >
+          <a
+            class="btn ghost"
+            href="https://github.com/AJpro774/kerabitengine/blob/main/scripts/package-reach.sh"
+            >macOS script</a
+          >
+          <a
+            class="btn ghost"
+            href="https://github.com/AJpro774/kerabitengine/blob/main/scripts/package-reach-windows.ps1"
+            >Windows script</a
+          >
+        </div>
+        <p class="note">
+          Expected artifacts when published:
+          <code>Reach-macos.zip</code> (Reach.app) and
+          <code>Reach-windows.zip</code> (<code>reach.exe</code> +
+          <code>levels/</code> + <code>assets/</code>). Build yourself with
+          <code>./scripts/package-reach.sh</code> or
+          <code>pwsh ./scripts/package-reach-windows.ps1</code>. CI can attach
+          both via the <code>package-reach</code> workflow
+          (<code>workflow_dispatch</code>).
+        </p>
+      </section>
+
+      <section id="docs" class="band">
+        <h2>Docs</h2>
+        <p>
+          Install stays rustup + cargo. Pick a guide and ship something today.
+        </p>
+        <ul class="docs-cards" style="margin-top: 1.5rem">
+          <li>
+            <a href="/docs/getting-started">
+              <strong>Getting Started</strong>
+              <span>Clone, hello cube, editor — under 30 minutes.</span>
+            </a>
+          </li>
+          <li>
+            <a href="/docs/api-tour">
+              <strong>API tour</strong>
+              <span>Builder, Context, scenes, lights, physics, audio.</span>
+            </a>
+          </li>
+          <li>
+            <a href="/docs/editor">
+              <strong>Editor guide</strong>
+              <span>Viewport, Play, undo, prefabs, Reach authoring.</span>
+            </a>
+          </li>
+        </ul>
       </section>
 
       <section id="play" class="band">
-        <h2>Reach &amp; Surge</h2>
+        <h2>Reach, Surge &amp; showcase</h2>
         <p>
-          Flagship micro-games ship with the engine. Author levels in
-          <code>kerabit-editor</code>, play on macOS, keep the challenge sharp.
+          Flagship campaign <strong>Reach</strong>, score-attack
+          <strong>Surge</strong>, and the visual trailer crate when present.
+          Author levels in <code>kerabit-editor</code>.
         </p>
         <pre class="code"><code>cargo run -p reach
 cargo run -p surge
+cargo run -p showcase
 cargo run -p kerabit-editor</code></pre>
+      </section>
+
+      <section id="changelog" class="band">
+        <h2>Changelog</h2>
+        <p>
+          Current line: <strong>1.0.0-alpha.2</strong> (Summit working branch).
+          Highlights:
+        </p>
+        <ul class="changelog-snip">
+          <li>
+            <strong>Product</strong> — docs site (Getting Started, API tour,
+            Editor), Reach packaging for macOS + Windows.
+          </li>
+          <li>
+            <strong>Engine</strong> — PBR-lite, multi-light, post, particles;
+            dynamics + character controller; spatial audio + buses.
+          </li>
+          <li>
+            <strong>Editor / games</strong> — in-viewport Play, undo, prefabs;
+            Reach 12-level campaign.
+          </li>
+        </ul>
+        <p class="note">
+          Full notes:
+          <a href="https://github.com/AJpro774/kerabitengine/blob/main/CHANGELOG.md"
+            >CHANGELOG.md</a
+          >
+          · Roadmap:
+          <a href="https://github.com/AJpro774/kerabitengine/blob/main/ROADMAP.md"
+            >ROADMAP.md</a
+          >.
+        </p>
       </section>
 
       <section id="engine" class="band">
@@ -87,12 +205,18 @@ cargo run -p kerabit-editor</code></pre>
 
     <footer class="foot">
       <span>Kerabit Engine</span>
-      <a href="https://github.com/AJpro774/kerabitengine">Source</a>
+      <a href="/docs/">Docs</a>
     </footer>
 
     <script>
       const brand = document.querySelector(".brand");
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const heroVideo = document.querySelector(".hero-video");
+      if (reduce && heroVideo) {
+        heroVideo.pause();
+        heroVideo.removeAttribute("autoplay");
+        document.documentElement.classList.add("reduce-motion");
+      }
       if (brand && !reduce) {
         brand.animate(
           [
@@ -102,21 +226,23 @@ cargo run -p kerabit-editor</code></pre>
           { duration: 1100, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" }
         );
       }
-      document.querySelectorAll(".hero h1, .hero .lede, .cta").forEach((el, i) => {
-        if (reduce) return;
-        el.animate(
-          [
-            { opacity: 0, transform: "translateY(18px)" },
-            { opacity: 1, transform: "translateY(0)" },
-          ],
-          {
-            duration: 800,
-            delay: 280 + i * 120,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-            fill: "forwards",
-          }
-        );
-      });
+      document
+        .querySelectorAll(".hero h1, .hero .lede, .cta, .hero-credit")
+        .forEach((el, i) => {
+          if (reduce) return;
+          el.animate(
+            [
+              { opacity: 0, transform: "translateY(18px)" },
+              { opacity: 1, transform: "translateY(0)" },
+            ],
+            {
+              duration: 800,
+              delay: 280 + i * 120,
+              easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+              fill: "forwards",
+            }
+          );
+        });
     </script>
   </body>
 </html>

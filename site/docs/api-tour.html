@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API tour — Kerabit</title>
+    <meta
+      name="description"
+      content="Tour of Kerabit's public game API: Kerabit builder, Entity, Context, scenes, lights, physics, audio."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/getting-started">Start</a>
+        <a href="/docs/editor">Editor</a>
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="docs">
+      <nav class="docs-crumb">
+        <a href="/docs/">Docs</a> / API tour
+      </nav>
+      <h1>API tour</h1>
+      <p class="docs-lede">
+        Games talk to Kerabit through a tiny builder + <code>run</code> closure.
+        wgpu and winit stay inside the crates. Full freeze table:
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/API.md">API.md</a>.
+      </p>
+
+      <h2>Composition</h2>
+      <pre class="code"><code>use kerabit::prelude::*;
+
+fn main() {
+    Kerabit::new("Demo")
+        .clear_color(Color::rgb(0.08, 0.09, 0.12))
+        .spawn(
+            Entity::new("cube")
+                .mesh(Mesh::cube())
+                .material(Material::color(Color::ORANGE).roughness(0.35))
+                .at(Vec3::new(0.0, 0.5, 0.0)),
+        )
+        .camera(Camera::perspective(60.0).look_at(vec3(5.0, 3.0, 7.0), Vec3::ZERO))
+        .light(Light::sun(vec3(-0.35, -1.0, -0.25)).intensity(1.2))
+        .ambient(Color::rgb(0.15, 0.16, 0.18))
+        .run(|ctx| {
+            if ctx.input().key_pressed(Key::Escape) {
+                ctx.quit();
+            }
+            if let Some(cube) = ctx.world_mut().get_mut("cube") {
+                cube.rotate_y(1.1 * ctx.dt());
+            }
+        });
+}</code></pre>
+
+      <h2>What you use every frame</h2>
+      <ul class="docs-list">
+        <li>
+          <code>ctx.dt()</code> — frame delta seconds
+        </li>
+        <li>
+          <code>ctx.input()</code> — keys / mouse (<code>key_down</code>,
+          <code>key_pressed</code>)
+        </li>
+        <li>
+          <code>ctx.world()</code> / <code>world_mut()</code> — named entities,
+          tags, layers, enable/disable
+        </li>
+        <li>
+          <code>ctx.camera_mut()</code> — orbit / follow
+        </li>
+        <li>
+          <code>ctx.physics()</code> — static AABBs, casts,
+          <code>move_and_collide</code>; dynamics + character controller (M2)
+        </li>
+        <li>
+          <code>ctx.audio()</code> — WAV play; spatial <code>play_at</code>,
+          buses, <code>play_music</code> (M3)
+        </li>
+        <li>
+          <code>ctx.ui()</code> — immediate <code>text</code> / <code>rect</code>
+        </li>
+        <li>
+          <code>ctx.spawn_particles(…)</code> — billboard bursts (M1)
+        </li>
+        <li>
+          <code>ctx.quit()</code> — leave the loop
+        </li>
+      </ul>
+
+      <h2>Materials &amp; lights</h2>
+      <p>
+        PBR-lite: albedo + roughness + metallic (+ optional normal map). Up to
+        <strong>4</strong> lights via <code>Kerabit::lights</code> /
+        <code>ctx.set_lights</code> (<code>Light::sun</code>,
+        <code>Light::point</code>). Soft shadows come from the first directional
+        light. HDR path goes through tonemap + cheap bloom.
+      </p>
+
+      <h2>Scenes</h2>
+      <p>
+        Author <code>.kerabit.json</code> in the editor or load at runtime:
+      </p>
+      <pre class="code"><code>Kerabit::new("Level")
+    .scene("games/reach/levels/01_intro.kerabit.json")
+    .run(|ctx| { /* … */ });
+
+// or inside the loop:
+ctx.load_scene("path/to/scene.kerabit.json")?;</code></pre>
+      <p>
+        Schema version stays <code>SCENE_VERSION = 1</code> with additive
+        <code>components</code> / <code>extras</code> objects reserved for
+        growth.
+      </p>
+
+      <h2>Try more examples</h2>
+      <pre class="code"><code>cargo run -p kerabit --example playground
+cargo run -p kerabit --example pbr_room
+cargo run -p kerabit --example physics_sandbox
+cargo run -p showcase   # engine trailer, when the crate is in the workspace</code></pre>
+
+      <p class="docs-foot-links">
+        Next: <a href="/docs/editor">Editor guide</a> · Contract:
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/API.md">API.md</a>
+      </p>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="/docs/">All docs</a>
+    </footer>
+  </body>
+</html>

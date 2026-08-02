@@ -1,5 +1,8 @@
 {
   "name": "kerabitengine-site",
   "private": true,
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "scripts": {
+    "build": "rm -rf public && mkdir -p public/docs public/media && cp index.html styles.css public/ && if [ -d docs ]; then cp -R docs/* public/docs/; fi && if [ -d media ]; then cp -R media/* public/media/; fi"
+  }
 }

@@ -1,9 +1,20 @@
-//! AABB collision, ray/sphere casts, and kinematic blocking for Kerabit.
+//! AABB collision, ray/sphere casts, kinematic blocking, dynamics, and
+//! character control for Kerabit.
 //!
-//! No PhysX / Rapier — axis-aligned boxes only. Game code registers static
-//! colliders and resolves movement with [`PhysicsWorld::move_and_collide`].
+//! No PhysX / Rapier — axis-aligned boxes and spheres only. Game code registers
+//! static colliders and resolves movement with [`PhysicsWorld::move_and_collide`]
+//! or [`CharacterController`]. Dynamic bodies integrate under gravity with a
+//! simple penetration resolve against statics.
+
+mod character;
+mod dynamics;
+
+pub use character::{CharacterController, CharacterMove};
+pub use dynamics::{BodyId, BodyShape, DynamicBody};
 
 use kerabit_math::Vec3;
+
+use dynamics::{integrate_dynamics, resolve_dynamic_vs_statics};
 
 /// Opaque collider handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -131,30 +142,52 @@ pub struct MoveResult {
     pub hit: bool,
 }
 
-/// Static AABB collider store + queries.
-#[derive(Debug, Default)]
+/// Static AABB collider store + queries + optional dynamic bodies.
+#[derive(Debug)]
 pub struct PhysicsWorld {
     next_id: u64,
     colliders: Vec<(ColliderId, Aabb)>,
+    next_body: u64,
+    bodies: Vec<DynamicBody>,
+    /// World gravity applied to dynamic bodies (`step`) and character controllers.
+    pub gravity: Vec3,
+}
+
+impl Default for PhysicsWorld {
+    fn default() -> Self {
+        Self {
+            next_id: 0,
+            colliders: Vec::new(),
+            next_body: 0,
+            bodies: Vec::new(),
+            gravity: Vec3::new(0.0, -9.81, 0.0),
+        }
+    }
 }
 
 impl PhysicsWorld {
-    /// Empty physics world.
+    /// Empty physics world (default gravity −Y 9.81).
     #[inline]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Number of registered colliders.
+    /// Number of registered static colliders.
     #[inline]
     pub fn len(&self) -> usize {
         self.colliders.len()
     }
 
-    /// True if no colliders are registered.
+    /// True if no static colliders are registered.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.colliders.is_empty()
+    }
+
+    /// Number of dynamic bodies.
+    #[inline]
+    pub fn body_count(&self) -> usize {
+        self.bodies.len()
     }
 
     /// Register a static AABB; returns a handle for later remove/update.
@@ -175,9 +208,10 @@ impl PhysicsWorld {
         }
     }
 
-    /// Remove every collider. Collider ids are not reused (`next_id` kept).
+    /// Remove every static collider and dynamic body. Ids are not reused.
     pub fn clear(&mut self) {
         self.colliders.clear();
+        self.bodies.clear();
     }
 
     /// Replace an existing collider's AABB.
@@ -196,6 +230,67 @@ impl PhysicsWorld {
             .iter()
             .find(|(c, _)| *c == id)
             .map(|(_, a)| *a)
+    }
+
+    /// Iterate static colliders.
+    pub fn colliders(&self) -> impl Iterator<Item = (ColliderId, Aabb)> + '_ {
+        self.colliders.iter().copied()
+    }
+
+    /// Spawn a dynamic body (AABB or sphere). Mass must be > 0.
+    pub fn add_dynamic(&mut self, body: DynamicBody) -> BodyId {
+        let id = BodyId(self.next_body);
+        self.next_body += 1;
+        let mut body = body;
+        body.id = id;
+        self.bodies.push(body);
+        id
+    }
+
+    /// Remove a dynamic body. Returns `true` if it existed.
+    pub fn remove_body(&mut self, id: BodyId) -> bool {
+        if let Some(i) = self.bodies.iter().position(|b| b.id == id) {
+            self.bodies.swap_remove(i);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Lookup a dynamic body.
+    pub fn get_body(&self, id: BodyId) -> Option<&DynamicBody> {
+        self.bodies.iter().find(|b| b.id == id)
+    }
+
+    /// Mutable lookup of a dynamic body.
+    pub fn get_body_mut(&mut self, id: BodyId) -> Option<&mut DynamicBody> {
+        self.bodies.iter_mut().find(|b| b.id == id)
+    }
+
+    /// Iterate dynamic bodies.
+    pub fn bodies(&self) -> &[DynamicBody] {
+        &self.bodies
+    }
+
+    /// Iterate dynamic bodies mutably.
+    pub fn bodies_mut(&mut self) -> &mut [DynamicBody] {
+        &mut self.bodies
+    }
+
+    /// Integrate dynamic bodies under gravity and resolve vs static AABBs.
+    ///
+    /// Body–body collisions are not resolved (M2 keeps dynamics simple).
+    pub fn step(&mut self, dt: f32) {
+        let dt = dt.max(0.0);
+        if dt <= 0.0 {
+            return;
+        }
+        let gravity = self.gravity;
+        integrate_dynamics(&mut self.bodies, gravity, dt);
+        let statics: Vec<Aabb> = self.colliders.iter().map(|(_, a)| *a).collect();
+        for body in &mut self.bodies {
+            resolve_dynamic_vs_statics(body, &statics);
+        }
     }
 
     /// True if `aabb` overlaps any registered collider.
@@ -350,7 +445,7 @@ fn point_in_aabb(p: Vec3, aabb: Aabb) -> bool {
         && p.z <= aabb.max.z
 }
 
-fn resolve_penetration(center: Vec3, half: Vec3, obstacle: Aabb) -> Vec3 {
+pub(crate) fn resolve_penetration(center: Vec3, half: Vec3, obstacle: Aabb) -> Vec3 {
     let mover = Aabb::from_center_half_extents(center, half);
     let px_pos = mover.max.x - obstacle.min.x;
     let px_neg = obstacle.max.x - mover.min.x;
@@ -512,5 +607,43 @@ mod tests {
         assert!(phys
             .raycast(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), 100.0)
             .is_none());
+    }
+
+    #[test]
+    fn dynamic_falls_onto_floor() {
+        let mut phys = PhysicsWorld::new();
+        phys.add_aabb(Aabb::from_center_half_extents(
+            vec3(0.0, -0.5, 0.0),
+            vec3(5.0, 0.5, 5.0),
+        ));
+        let id = phys.add_dynamic(DynamicBody::aabb(
+            vec3(0.0, 3.0, 0.0),
+            vec3(0.5, 0.5, 0.5),
+            1.0,
+        ));
+        for _ in 0..120 {
+            phys.step(1.0 / 60.0);
+        }
+        let body = phys.get_body(id).expect("body");
+        assert!(
+            body.position.y < 1.1 && body.position.y > 0.4,
+            "expected resting on floor, y={}",
+            body.position.y
+        );
+        assert!(body.velocity.y.abs() < 0.5, "vy={}", body.velocity.y);
+    }
+
+    #[test]
+    fn character_controller_blocks_on_wall() {
+        let mut phys = PhysicsWorld::new();
+        phys.add_aabb(Aabb::from_center_half_extents(
+            vec3(2.0, 0.5, 0.0),
+            vec3(0.5, 0.5, 0.5),
+        ));
+        let mut cc = CharacterController::new(vec3(0.0, 0.5, 0.0), vec3(0.4, 0.4, 0.4));
+        cc.gravity = 0.0;
+        let result = cc.move_planar(&phys, vec3(1.0, 0.0, 0.0), 10.0, 1.0);
+        assert!(result.hit);
+        assert!(cc.position.x < 1.2);
     }
 }

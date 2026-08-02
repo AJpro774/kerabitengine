@@ -9,14 +9,16 @@ members = [
     "crates/kerabit-render",
     "crates/kerabit-assets",
     "crates/kerabit-physics",
+    "crates/kerabit-anim",
     "crates/kerabit-audio",
     "games/reach",
     "games/surge",
+    "games/showcase",
     "tools/kerabit-editor",
 ]
 
 [workspace.package]
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/AJpro774/kerabitengine"
@@ -40,7 +42,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 tobj = "4.0"
 gltf = { version = "1.4", default-features = false, features = ["utils", "import"] }
 
-# Audio (P6) — WAV-only decode to keep footprint lean (no mp3/flac/vorbis)
+# Audio (P6/M3) — WAV-only decode to keep footprint lean (no mp3/flac/vorbis); spatial + buses + streaming music
 rodio = { version = "0.20", default-features = false, features = ["wav"] }
 
 # Scene format (P7) — `.kerabit.json` save/load mirroring the public spawn API
@@ -55,6 +57,7 @@ kerabit-input = { path = "crates/kerabit-input" }
 kerabit-render = { path = "crates/kerabit-render" }
 kerabit-assets = { path = "crates/kerabit-assets" }
 kerabit-physics = { path = "crates/kerabit-physics" }
+kerabit-anim = { path = "crates/kerabit-anim" }
 kerabit-audio = { path = "crates/kerabit-audio" }
 
 [workspace.lints.rust]

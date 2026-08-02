@@ -1612,9 +1612,11 @@ dependencies = [
 
 [[package]]
 name = "kerabit"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "anyhow",
+ "image",
+ "kerabit-anim",
  "kerabit-assets",
  "kerabit-audio",
  "kerabit-color",
@@ -1630,8 +1632,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kerabit-anim"
+version = "1.0.0-alpha.2"
+dependencies = [
+ "kerabit-math",
+ "kerabit-world",
+]
+
+[[package]]
 name = "kerabit-assets"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "anyhow",
  "gltf",
@@ -1645,19 +1655,20 @@ dependencies = [
 
 [[package]]
 name = "kerabit-audio"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
+ "kerabit-math",
  "rodio",
  "thiserror 2.0.19",
 ]
 
 [[package]]
 name = "kerabit-color"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 
 [[package]]
 name = "kerabit-editor"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "eframe",
  "egui",
@@ -1667,30 +1678,32 @@ dependencies = [
  "kerabit-assets",
  "kerabit-render",
  "rfd",
+ "serde",
+ "serde_json",
  "wgpu",
 ]
 
 [[package]]
 name = "kerabit-input"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 
 [[package]]
 name = "kerabit-math"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "glam",
 ]
 
 [[package]]
 name = "kerabit-physics"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "kerabit-math",
 ]
 
 [[package]]
 name = "kerabit-render"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1703,7 +1716,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-world"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "kerabit-math",
 ]
@@ -2617,7 +2630,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "reach"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "kerabit",
 ]
@@ -2878,6 +2891,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "showcase"
+version = "1.0.0-alpha.2"
+dependencies = [
+ "kerabit",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3053,7 +3073,7 @@ dependencies = [
 
 [[package]]
 name = "surge"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "kerabit",
 ]

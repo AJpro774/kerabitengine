@@ -281,6 +281,7 @@ impl OffscreenLitRenderer {
     /// Encode shadow → sky → lit into `encoder` (color+depth offscreen).
     pub fn encode_lit(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         camera: &mut Camera,
@@ -294,15 +295,22 @@ impl OffscreenLitRenderer {
         queue.write_buffer(&self.frame_buffer, 0, bytemuck::bytes_of(&frame));
 
         let white = self.texture_cache.white();
-        let (flat, ranges) = pack_draw_batches(draws, white);
+        let flat_n = self.texture_cache.flat_normal();
+        let (flat, ranges) = pack_draw_batches(draws, white, flat_n);
         if !flat.is_empty() {
             queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&flat));
         }
 
         let shadow_ranges: Vec<(MeshId, u32, u32)> = ranges
             .iter()
-            .map(|&(mesh, _, start, count)| (mesh, start, count))
+            .map(|&(mesh, _, _, start, count)| (mesh, start, count))
             .collect();
+
+        for &(_, albedo, normal, _, _) in &ranges {
+            let _ = self
+                .texture_cache
+                .ensure_material_bind_group(device, albedo, normal);
+        }
 
         self.shadow.encode(
             queue,
@@ -348,11 +356,11 @@ impl OffscreenLitRenderer {
             pass.set_bind_group(0, &self.frame_bind_group, &[]);
             pass.set_bind_group(2, &self.shadow.bind_group, &[]);
 
-            for (mesh_id, tex_id, start, count) in ranges {
+            for (mesh_id, albedo, normal, start, count) in ranges {
                 let Some(gpu_mesh) = self.mesh_cache.get(mesh_id) else {
                     continue;
                 };
-                let Some(tex_bg) = self.texture_cache.bind_group(tex_id) else {
+                let Some(tex_bg) = self.texture_cache.material_bind_group(albedo, normal) else {
                     continue;
                 };
                 let byte_offset = start as u64 * std::mem::size_of::<InstanceRaw>() as u64;

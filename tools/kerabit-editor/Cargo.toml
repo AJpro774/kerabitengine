@@ -22,6 +22,8 @@ egui-winit = "0.31"
 egui-wgpu = "0.31"
 wgpu = { workspace = true }
 rfd = "0.15"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

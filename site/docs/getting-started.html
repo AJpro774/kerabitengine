@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Getting Started — Kerabit</title>
+    <meta
+      name="description"
+      content="Clone Kerabit with rustup + cargo, run the hello cube, then open the editor — under 30 minutes."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/api-tour">API tour</a>
+        <a href="/docs/editor">Editor</a>
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="docs">
+      <nav class="docs-crumb">
+        <a href="/docs/">Docs</a> / Getting Started
+      </nav>
+      <h1>Getting Started</h1>
+      <p class="docs-lede">
+        Stranger path: this site → clone → hello cube → editor. Budget about
+        <strong>30 minutes</strong> on a machine with a working GPU driver
+        (Metal / Vulkan / DX12 via wgpu).
+      </p>
+
+      <ol class="docs-steps">
+        <li>
+          <h2>1. Install Rust</h2>
+          <p>
+            Install stable Rust with
+            <a href="https://rustup.rs/">rustup</a>. Kerabit pins the toolchain
+            in <code>rust-toolchain.toml</code> — rustup will pick it up on first
+            <code>cargo</code> in the repo.
+          </p>
+          <pre class="code"><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Windows: use the rustup-init.exe installer from rustup.rs
+rustc --version</code></pre>
+        </li>
+        <li>
+          <h2>2. Clone the engine</h2>
+          <pre class="code"><code>git clone https://github.com/AJpro774/kerabitengine.git
+cd kerabitengine</code></pre>
+        </li>
+        <li>
+          <h2>3. Hello cube (~2 min after first compile)</h2>
+          <p>
+            First build downloads crates and compiles wgpu — expect several
+            minutes once. After that, examples are fast.
+          </p>
+          <pre class="code"><code>cargo run -p kerabit --example hello</code></pre>
+          <p>
+            You should see an orange cube on a gray ground. Escape quits. Source:
+            <code>examples/hello.rs</code>.
+          </p>
+        </li>
+        <li>
+          <h2>4. Open the editor</h2>
+          <pre class="code"><code>cargo run -p kerabit-editor</code></pre>
+          <p>
+            File → Open a level under <code>games/reach/levels/</code>. Orbit with
+            right mouse, select an entity, press <kbd>W</kbd> for the move gizmo.
+            See the <a href="/docs/editor">Editor guide</a> for Play, undo, and
+            prefabs.
+          </p>
+        </li>
+        <li>
+          <h2>5. Play the flagship game (optional)</h2>
+          <pre class="code"><code>cargo run -p reach
+cargo run -p surge
+# Visual trailer scene (when present):
+cargo run -p showcase</code></pre>
+          <p>
+            Players who only want Reach can grab a zip from
+            <a href="/#download">Downloads</a> (macOS + Windows when published).
+          </p>
+        </li>
+      </ol>
+
+      <section class="docs-callout">
+        <h2>Accept gate</h2>
+        <p>
+          If you completed steps 1–4 and saw the hello window plus the editor
+          viewport, you are on the Summit stranger path. Next:
+          <a href="/docs/api-tour">API tour</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="/docs/">All docs</a>
+    </footer>
+  </body>
+</html>

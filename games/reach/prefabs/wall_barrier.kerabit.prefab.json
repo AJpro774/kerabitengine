@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "name": "wall_barrier",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [1.0, 0.55, 0.12], "roughness": 0.55 },
+      "at": [0.0, 0.75, 0.0],
+      "scale": [12.0, 1.5, 0.5]
+    }
+  ]
+}

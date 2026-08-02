@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "name": "goal",
+      "tags": ["goal"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.15, 0.85, 0.9], "roughness": 0.25 },
+      "at": [0.0, 0.3, 0.0],
+      "scale": [1.6, 0.6, 1.6]
+    }
+  ]
+}

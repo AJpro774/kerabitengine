@@ -1,0 +1,18 @@
+[package]
+name = "showcase"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kerabit Summit showcase — non-game engine trailer (PBR, lights, particles)"
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "showcase"
+path = "src/main.rs"
+
+[dependencies]
+kerabit = { path = "../../crates/kerabit" }
+
+[lints]
+workspace = true

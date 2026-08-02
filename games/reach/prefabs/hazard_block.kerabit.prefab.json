@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "name": "hazard_block",
+      "tags": ["hazard"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.9, 0.12, 0.18], "roughness": 0.65 },
+      "at": [0.0, 0.45, 0.0],
+      "scale": [1.0, 0.9, 1.0]
+    }
+  ]
+}

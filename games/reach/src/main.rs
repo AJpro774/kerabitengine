@@ -1,7 +1,8 @@
-//! Reach — Kerabit flagship micro-game.
+//! Reach — Kerabit flagship campaign.
 //!
-//! Title → play → clear / fail → next level or retry. HUD and juice via the
-//! public Kerabit API only (`ctx.ui()`, camera lerp, squash, SFX).
+//! Title → chapter select → play → clear / fail → next level or retry.
+//! HUD and juice via the public Kerabit API only (`ctx.ui()`, camera lerp,
+//! squash, particles, spatial SFX).
 //!
 //! Level transitions use mid-run [`Context::apply_scene`] (same window / GPU /
 //! EventLoop) — no App teardown between levels.
@@ -9,13 +10,15 @@
 //! **Controls**
 //! - WASD — move
 //! - Space — start / confirm / next level
+//! - ←/→ or 1–3 — chapter select
 //! - R — retry after fail (or mid-run)
-//! - Escape — quit
+//! - Escape — back / quit
 //!
 //! ```bash
 //! cargo run -p reach
 //! ```
 
+use std::fs;
 use std::path::PathBuf;
 
 use kerabit::prelude::*;
@@ -27,11 +30,60 @@ const LEVEL_FILES: &[&str] = &[
     "03_gauntlet.kerabit.json",
     "04_switchback.kerabit.json",
     "05_crossfire.kerabit.json",
+    "06_serpent.kerabit.json",
+    "07_twin_gates.kerabit.json",
+    "08_zipper.kerabit.json",
+    "09_lattice.kerabit.json",
+    "10_rift.kerabit.json",
+    "11_crucible.kerabit.json",
+    "12_summit.kerabit.json",
+];
+
+const LEVEL_NAMES: &[&str] = &[
+    "Intro",
+    "Bent",
+    "Gauntlet",
+    "Switchback",
+    "Crossfire",
+    "Serpent",
+    "Twin Gates",
+    "Zipper",
+    "Lattice",
+    "Rift",
+    "Crucible",
+    "Summit",
+];
+
+struct Chapter {
+    name: &'static str,
+    /// Inclusive start index into [`LEVEL_FILES`].
+    start: usize,
+    /// Exclusive end index.
+    end: usize,
+}
+
+const CHAPTERS: &[Chapter] = &[
+    Chapter {
+        name: "I · Approach",
+        start: 0,
+        end: 4,
+    },
+    Chapter {
+        name: "II · Pressure",
+        start: 4,
+        end: 8,
+    },
+    Chapter {
+        name: "III · Summit",
+        start: 8,
+        end: 12,
+    },
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Title,
+    ChapterSelect,
     Playing,
     Won,
     Failed,
@@ -59,6 +111,150 @@ struct Level {
     cam_height: f32,
 }
 
+/// Persisted campaign progress (best clears + highest unlocked chapter).
+#[derive(Clone, Debug)]
+struct Progress {
+    /// Highest chapter index the player may start (0 = Approach only).
+    unlocked_chapter: usize,
+    /// Per-level best clear times (seconds); `None` = never cleared.
+    best: Vec<Option<f32>>,
+}
+
+impl Progress {
+    fn fresh() -> Self {
+        Self {
+            unlocked_chapter: 0,
+            best: vec![None; LEVEL_FILES.len()],
+        }
+    }
+
+    fn load() -> Self {
+        let path = progress_path();
+        let Ok(text) = fs::read_to_string(&path) else {
+            return Self::fresh();
+        };
+        Self::parse(&text).unwrap_or_else(Self::fresh)
+    }
+
+    fn parse(text: &str) -> Option<Self> {
+        let mut unlocked = 0usize;
+        let mut best = vec![None; LEVEL_FILES.len()];
+        let mut saw_header = false;
+        for raw in text.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let mut parts = line.split_whitespace();
+            let key = parts.next()?;
+            match key {
+                "v1" => saw_header = true,
+                "unlock" => {
+                    unlocked = parts.next()?.parse().ok()?;
+                }
+                "best" => {
+                    let idx: usize = parts.next()?.parse().ok()?;
+                    let t: f32 = parts.next()?.parse().ok()?;
+                    if idx < best.len() && t > 0.0 {
+                        best[idx] = Some(t);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !saw_header {
+            return None;
+        }
+        unlocked = unlocked.min(CHAPTERS.len().saturating_sub(1));
+        Some(Self {
+            unlocked_chapter: unlocked,
+            best,
+        })
+    }
+
+    fn save(&self) {
+        let path = progress_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut out = String::from("# Kerabit Reach campaign progress\nv1\n");
+        out.push_str(&format!("unlock {}\n", self.unlocked_chapter));
+        for (i, t) in self.best.iter().enumerate() {
+            if let Some(sec) = t {
+                out.push_str(&format!("best {i} {sec:.3}\n"));
+            }
+        }
+        if let Err(err) = fs::write(&path, out) {
+            eprintln!("reach: could not save progress: {err}");
+        }
+    }
+
+    fn record_clear(&mut self, level_index: usize, time: f32) -> bool {
+        let mut improved = false;
+        if level_index < self.best.len() {
+            match self.best[level_index] {
+                Some(prev) if time < prev => {
+                    self.best[level_index] = Some(time);
+                    improved = true;
+                }
+                None => {
+                    self.best[level_index] = Some(time);
+                    improved = true;
+                }
+                _ => {}
+            }
+        }
+        // Unlock next chapter when every level in the current chapter is cleared.
+        for (ci, ch) in CHAPTERS.iter().enumerate() {
+            if ci > self.unlocked_chapter {
+                break;
+            }
+            let chapter_done = (ch.start..ch.end).all(|i| self.best.get(i).copied().flatten().is_some());
+            if chapter_done {
+                let next = (ci + 1).min(CHAPTERS.len().saturating_sub(1));
+                if next > self.unlocked_chapter {
+                    self.unlocked_chapter = next;
+                }
+            }
+        }
+        improved
+    }
+
+    fn chapter_best_sum(&self, chapter: usize) -> Option<f32> {
+        let ch = CHAPTERS.get(chapter)?;
+        let mut sum = 0.0f32;
+        for i in ch.start..ch.end {
+            sum += self.best.get(i).copied().flatten()?;
+        }
+        Some(sum)
+    }
+}
+
+fn progress_path() -> PathBuf {
+    if let Some(base) = progress_dir() {
+        return base.join("reach_progress.txt");
+    }
+    root_dir().join("reach_progress.txt")
+}
+
+fn progress_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Kerabit"))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".kerabit"))
+    }
+}
+
+fn chapter_for_level(level_index: usize) -> usize {
+    CHAPTERS
+        .iter()
+        .position(|c| level_index >= c.start && level_index < c.end)
+        .unwrap_or(0)
+}
+
 /// Data root for `levels/` and `assets/`.
 ///
 /// Resolution order (first hit with a `levels/` directory wins):
@@ -68,15 +264,10 @@ struct Level {
 fn root_dir() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(mac_os) = exe.parent() {
-            if mac_os
-                .file_name()
-                .is_some_and(|n| n == "MacOS")
-            {
+            if mac_os.file_name().is_some_and(|n| n == "MacOS") {
                 let resources = mac_os.join("../Resources");
                 if resources.join("levels").is_dir() {
-                    return resources
-                        .canonicalize()
-                        .unwrap_or(resources);
+                    return resources.canonicalize().unwrap_or(resources);
                 }
             }
             if mac_os.join("levels").is_dir() {
@@ -100,6 +291,65 @@ fn play_sfx(ctx: &mut Context<'_>, name: &str) {
     if let Err(err) = ctx.audio().play(&path) {
         eprintln!("reach audio: {err}");
     }
+}
+
+fn play_sfx_at(ctx: &mut Context<'_>, name: &str, position: Vec3) {
+    let path = asset_path(name);
+    if let Err(err) = ctx.audio().play_at(&path, position) {
+        eprintln!("reach audio: {err}");
+    }
+}
+
+fn burst_win(ctx: &mut Context<'_>, at: Vec3) {
+    ctx.spawn_particles(ParticleBurst {
+        origin: at + Vec3::Y * 0.4,
+        count: 48,
+        color: Color::rgb(0.25, 0.95, 0.9),
+        size: 0.1,
+        speed: 3.2,
+        lifetime: 0.85,
+        velocity: Vec3::Y * 1.2,
+        spread: 1.0,
+    });
+}
+
+fn burst_fail(ctx: &mut Context<'_>, at: Vec3) {
+    ctx.spawn_particles(ParticleBurst {
+        origin: at + Vec3::Y * 0.3,
+        count: 36,
+        color: Color::rgb(0.95, 0.2, 0.18),
+        size: 0.11,
+        speed: 2.8,
+        lifetime: 0.7,
+        velocity: Vec3::Y * 0.6,
+        spread: 1.0,
+    });
+}
+
+fn burst_bump(ctx: &mut Context<'_>, at: Vec3) {
+    ctx.spawn_particles(ParticleBurst {
+        origin: at + Vec3::Y * 0.35,
+        count: 10,
+        color: Color::rgb(1.0, 0.75, 0.35),
+        size: 0.06,
+        speed: 1.6,
+        lifetime: 0.35,
+        velocity: Vec3::Y * 0.5,
+        spread: 0.9,
+    });
+}
+
+fn goal_sparkle(ctx: &mut Context<'_>, level: &Level) {
+    ctx.spawn_particles(ParticleBurst {
+        origin: level.goal_center + Vec3::Y * 0.5,
+        count: 8,
+        color: Color::rgb(0.4, 0.95, 1.0),
+        size: 0.05,
+        speed: 0.9,
+        lifetime: 0.45,
+        velocity: Vec3::Y * 0.8,
+        spread: 0.7,
+    });
 }
 
 fn text_width(s: &str, size: f32) -> f32 {
@@ -128,12 +378,12 @@ fn begin_level_camera(
     *cam_target = Vec3::new(player_pos.x, 0.4, player_pos.z);
 }
 
-/// Load the next level JSON and apply it in-process (same window / GPU).
-fn advance_level(
+fn load_level_into(
     ctx: &mut Context<'_>,
-    level_index: &mut usize,
+    index: usize,
     level: &mut Level,
     player_pos: &mut Vec3,
+    controller: &mut CharacterController,
     phase: &mut Phase,
     elapsed: &mut f32,
     squash: &mut f32,
@@ -142,12 +392,12 @@ fn advance_level(
     cam_eye: &mut Vec3,
     cam_target: &mut Vec3,
     physics_ready: &mut bool,
+    level_index: &mut usize,
 ) -> bool {
-    let next = *level_index + 1;
-    if next >= LEVEL_FILES.len() {
+    if index >= LEVEL_FILES.len() {
         return false;
     }
-    let path = level_path(next);
+    let path = level_path(index);
     let scene = match Scene::load(&path) {
         Ok(s) => s,
         Err(err) => {
@@ -160,8 +410,10 @@ fn advance_level(
         eprintln!("reach: apply_scene failed: {err}");
         return false;
     }
-    *level_index = next;
+    *level_index = index;
     *player_pos = level.player_start;
+    *controller =
+        CharacterController::planar(level.player_start, level.player_half).with_max_speed(5.2);
     *phase = Phase::Playing;
     *elapsed = 0.0;
     *squash = 0.3;
@@ -176,6 +428,43 @@ fn advance_level(
     true
 }
 
+fn advance_level(
+    ctx: &mut Context<'_>,
+    level_index: &mut usize,
+    level: &mut Level,
+    player_pos: &mut Vec3,
+    controller: &mut CharacterController,
+    phase: &mut Phase,
+    elapsed: &mut f32,
+    squash: &mut f32,
+    flash: &mut f32,
+    velocity_xz: &mut Vec2,
+    cam_eye: &mut Vec3,
+    cam_target: &mut Vec3,
+    physics_ready: &mut bool,
+) -> bool {
+    let next = *level_index + 1;
+    if next >= LEVEL_FILES.len() {
+        return false;
+    }
+    load_level_into(
+        ctx,
+        next,
+        level,
+        player_pos,
+        controller,
+        phase,
+        elapsed,
+        squash,
+        flash,
+        velocity_xz,
+        cam_eye,
+        cam_target,
+        physics_ready,
+        level_index,
+    )
+}
+
 fn main() {
     let path = level_path(0);
     let scene = Scene::load(&path).unwrap_or_else(|err| {
@@ -185,8 +474,12 @@ fn main() {
 
     let mut level = Level::from_scene(&scene);
     let mut level_index = 0usize;
+    let mut progress = Progress::load();
+    let mut chapter_cursor = progress.unlocked_chapter.min(CHAPTERS.len() - 1);
 
     let mut player_pos = level.player_start;
+    let mut controller =
+        CharacterController::planar(level.player_start, level.player_half).with_max_speed(5.2);
     let mut phase = Phase::Title;
     let mut physics_ready = false;
     let mut elapsed = 0.0f32;
@@ -199,7 +492,10 @@ fn main() {
     cam_target.y = 0.4;
     let mut velocity_xz = Vec2::ZERO;
     let mut clear_time = 0.0f32;
+    let mut clear_improved = false;
     let mut all_clear = false;
+    let mut sparkle_cd = 0.0f32;
+    let mut bump_cd = 0.0f32;
 
     scene
         .into_kerabit("Reach")
@@ -210,10 +506,33 @@ fn main() {
         .run(move |ctx| {
             time_alive += ctx.dt();
             let dt = ctx.dt();
+            ctx.sync_audio_listener();
+            bump_cd = (bump_cd - dt).max(0.0);
+            sparkle_cd = (sparkle_cd - dt).max(0.0);
 
-            if ctx.input().key_pressed(Key::Escape) {
-                ctx.quit();
-                return;
+            match phase {
+                Phase::Title => {
+                    if ctx.input().key_pressed(Key::Escape) {
+                        ctx.quit();
+                        return;
+                    }
+                }
+                Phase::ChapterSelect => {
+                    if ctx.input().key_pressed(Key::Escape) {
+                        phase = Phase::Title;
+                        play_sfx(ctx, "ui.wav");
+                        return;
+                    }
+                }
+                Phase::Playing | Phase::Won | Phase::Failed => {
+                    if ctx.input().key_pressed(Key::Escape) {
+                        phase = Phase::ChapterSelect;
+                        chapter_cursor = chapter_for_level(level_index)
+                            .min(progress.unlocked_chapter);
+                        play_sfx(ctx, "ui.wav");
+                        return;
+                    }
+                }
             }
 
             if !physics_ready {
@@ -230,7 +549,6 @@ fn main() {
 
             match phase {
                 Phase::Title => {
-                    // Idle bob on title.
                     let bob = (time_alive * 2.2).sin() * 0.12;
                     player_pos = level.player_start;
                     player_pos.y = level.player_start.y + bob;
@@ -261,16 +579,25 @@ fn main() {
                     let title = "REACH";
                     ctx.ui().text(
                         centered_x(title, title_size),
-                        0.36,
+                        0.32,
                         title_size,
                         Color::WHITE,
                         title,
+                    );
+                    let sub = "12 levels · 3 chapters";
+                    let ss = 0.028;
+                    ctx.ui().text(
+                        centered_x(sub, ss),
+                        0.44,
+                        ss,
+                        Color::rgb(0.7, 0.78, 0.88),
+                        sub,
                     );
                     let hint = "Press Space";
                     let hint_size = 0.035;
                     ctx.ui().text(
                         centered_x(hint, hint_size),
-                        0.50,
+                        0.54,
                         hint_size,
                         Color::rgb(0.75, 0.78, 0.85),
                         hint,
@@ -278,9 +605,141 @@ fn main() {
 
                     if ctx.input().key_pressed(Key::Space) {
                         play_sfx(ctx, "ui.wav");
-                        phase = Phase::Playing;
-                        player_pos = level.player_start;
-                        elapsed = 0.0;
+                        phase = Phase::ChapterSelect;
+                        chapter_cursor = progress.unlocked_chapter.min(CHAPTERS.len() - 1);
+                    }
+                }
+                Phase::ChapterSelect => {
+                    player_pos = level.player_start;
+                    apply_player_visual(ctx, &level, player_pos, 0.0, 1.0);
+                    spin_goal(ctx, dt * 0.5);
+                    pulse_hazards(ctx, &level, time_alive);
+                    follow_camera(
+                        ctx,
+                        &mut cam_eye,
+                        &mut cam_target,
+                        &level,
+                        player_pos,
+                        Vec2::ZERO,
+                        dt,
+                        2.0,
+                    );
+
+                    if ctx.input().key_pressed(Key::Left) || ctx.input().key_pressed(Key::A) {
+                        if chapter_cursor > 0 {
+                            chapter_cursor -= 1;
+                            play_sfx(ctx, "ui.wav");
+                        }
+                    }
+                    if ctx.input().key_pressed(Key::Right) || ctx.input().key_pressed(Key::D) {
+                        let max = progress.unlocked_chapter.min(CHAPTERS.len() - 1);
+                        if chapter_cursor < max {
+                            chapter_cursor += 1;
+                            play_sfx(ctx, "ui.wav");
+                        }
+                    }
+                    for (i, key) in [Key::Digit1, Key::Digit2, Key::Digit3]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        if ctx.input().key_pressed(key) && i <= progress.unlocked_chapter {
+                            chapter_cursor = i;
+                            play_sfx(ctx, "ui.wav");
+                        }
+                    }
+
+                    draw_flash(ctx, flash, flash_color);
+                    ctx.ui().rect(
+                        0.0,
+                        0.0,
+                        1.0,
+                        1.0,
+                        Color::rgba(0.02, 0.03, 0.07, 0.62),
+                    );
+                    let header = "CHAPTERS";
+                    let hs = 0.06;
+                    ctx.ui().text(
+                        centered_x(header, hs),
+                        0.14,
+                        hs,
+                        Color::WHITE,
+                        header,
+                    );
+
+                    for (i, ch) in CHAPTERS.iter().enumerate() {
+                        let y = 0.30 + i as f32 * 0.14;
+                        let locked = i > progress.unlocked_chapter;
+                        let selected = i == chapter_cursor;
+                        let label = if locked {
+                            format!("{}  — locked", ch.name)
+                        } else if selected {
+                            format!("> {} <", ch.name)
+                        } else {
+                            ch.name.to_string()
+                        };
+                        let color = if locked {
+                            Color::rgb(0.4, 0.42, 0.48)
+                        } else if selected {
+                            Color::rgb(0.35, 0.95, 0.85)
+                        } else {
+                            Color::rgb(0.8, 0.84, 0.9)
+                        };
+                        let size = if selected { 0.036 } else { 0.032 };
+                        ctx.ui()
+                            .text(centered_x(&label, size), y, size, color, &label);
+
+                        if !locked {
+                            let detail = match progress.chapter_best_sum(i) {
+                                Some(sum) => format!(
+                                    "Lv {}–{}  ·  best {:.1}s",
+                                    ch.start + 1,
+                                    ch.end,
+                                    sum
+                                ),
+                                None => format!("Lv {}–{}", ch.start + 1, ch.end),
+                            };
+                            let ds = 0.022;
+                            ctx.ui().text(
+                                centered_x(&detail, ds),
+                                y + 0.045,
+                                ds,
+                                Color::rgb(0.55, 0.6, 0.68),
+                                &detail,
+                            );
+                        }
+                    }
+
+                    let prompt = "←/→ select   Space start   Esc back";
+                    let ps = 0.024;
+                    ctx.ui().text(
+                        centered_x(prompt, ps),
+                        0.88,
+                        ps,
+                        Color::rgb(0.65, 0.7, 0.78),
+                        prompt,
+                    );
+
+                    if ctx.input().key_pressed(Key::Space)
+                        && chapter_cursor <= progress.unlocked_chapter
+                    {
+                        play_sfx(ctx, "ui.wav");
+                        let start = CHAPTERS[chapter_cursor].start;
+                        let _ = load_level_into(
+                            ctx,
+                            start,
+                            &mut level,
+                            &mut player_pos,
+                            &mut controller,
+                            &mut phase,
+                            &mut elapsed,
+                            &mut squash,
+                            &mut flash,
+                            &mut velocity_xz,
+                            &mut cam_eye,
+                            &mut cam_target,
+                            &mut physics_ready,
+                            &mut level_index,
+                        );
                         squash = 0.35;
                     }
                 }
@@ -292,6 +751,7 @@ fn main() {
                             ctx,
                             &level,
                             &mut player_pos,
+                            &mut controller,
                             &mut phase,
                             &mut elapsed,
                             &mut squash,
@@ -315,29 +775,25 @@ fn main() {
                     if ctx.input().key_down(Key::D) {
                         wish.x += 1.0;
                     }
-                    let velocity = if wish.length_squared() > 0.0 {
-                        wish.normalize() * speed
-                    } else {
-                        Vec3::ZERO
-                    };
-                    velocity_xz = Vec2::new(velocity.x, velocity.z);
-
-                    let result = ctx.physics().move_and_collide(
-                        player_pos,
-                        velocity,
-                        level.player_half,
-                        dt,
-                    );
+                    let result = controller.move_planar(ctx.physics(), wish, speed, dt);
                     player_pos = result.position;
-                    player_pos.y = level.player_start.y;
+                    velocity_xz = Vec2::new(controller.velocity.x, controller.velocity.z);
 
-                    if result.hit && velocity.length_squared() > 0.01 {
+                    if result.hit && velocity_xz.length_squared() > 0.01 {
                         squash = squash.max(0.45);
+                        if bump_cd <= 0.0 {
+                            burst_bump(ctx, player_pos);
+                            bump_cd = 0.18;
+                        }
                     }
 
                     apply_player_visual(ctx, &level, player_pos, squash, 1.0);
                     spin_goal(ctx, dt * 1.8);
                     pulse_hazards(ctx, &level, time_alive);
+                    if sparkle_cd <= 0.0 {
+                        goal_sparkle(ctx, &level);
+                        sparkle_cd = 0.4;
+                    }
                     follow_camera(
                         ctx,
                         &mut cam_eye,
@@ -367,19 +823,23 @@ fn main() {
                         squash = 0.85;
                         flash = 1.0;
                         flash_color = Color::rgb(0.95, 0.12, 0.15);
-                        play_sfx(ctx, "fail.wav");
+                        play_sfx_at(ctx, "fail.wav", player_pos);
+                        burst_fail(ctx, player_pos);
                     } else if hit_goal {
                         phase = Phase::Won;
                         clear_time = elapsed;
+                        clear_improved = progress.record_clear(level_index, clear_time);
+                        progress.save();
                         all_clear = level_index + 1 >= LEVEL_FILES.len();
                         squash = 0.7;
                         flash = 0.85;
                         flash_color = Color::rgb(0.2, 0.95, 0.85);
-                        play_sfx(ctx, "win.wav");
+                        play_sfx_at(ctx, "win.wav", level.goal_center);
+                        burst_win(ctx, level.goal_center);
                     }
 
                     draw_flash(ctx, flash, flash_color);
-                    draw_hud(ctx, level_index, elapsed);
+                    draw_hud(ctx, level_index, elapsed, &progress);
                 }
                 Phase::Won => {
                     spin_goal(ctx, dt * 3.2);
@@ -406,36 +866,51 @@ fn main() {
                     );
 
                     let headline = if all_clear {
-                        "ALL CLEAR"
+                        "CAMPAIGN CLEAR"
                     } else {
                         "CLEAR"
                     };
-                    let hs = 0.08;
+                    let hs = if all_clear { 0.065 } else { 0.08 };
                     ctx.ui().text(
                         centered_x(headline, hs),
-                        0.34,
+                        0.30,
                         hs,
                         Color::rgb(0.35, 1.0, 0.9),
                         headline,
                     );
-                    let time_line = format!("Time {clear_time:.2}s");
-                    let ts = 0.035;
+                    let time_line = if clear_improved {
+                        format!("Time {clear_time:.2}s  ·  new best!")
+                    } else {
+                        format!("Time {clear_time:.2}s")
+                    };
+                    let ts = 0.032;
                     ctx.ui().text(
                         centered_x(&time_line, ts),
-                        0.46,
+                        0.42,
                         ts,
                         Color::WHITE,
                         &time_line,
                     );
+                    if let Some(best) = progress.best.get(level_index).copied().flatten() {
+                        let best_line = format!("Best {best:.2}s");
+                        let bs = 0.026;
+                        ctx.ui().text(
+                            centered_x(&best_line, bs),
+                            0.48,
+                            bs,
+                            Color::rgb(0.7, 0.85, 0.9),
+                            &best_line,
+                        );
+                    }
                     let prompt = if all_clear {
-                        "Space — done"
+                        "Space — chapters"
                     } else {
                         "Space — next level"
                     };
                     let ps = 0.03;
                     ctx.ui().text(
                         centered_x(prompt, ps),
-                        0.56,
+                        0.58,
                         ps,
                         Color::rgb(0.75, 0.8, 0.88),
                         prompt,
@@ -444,12 +919,14 @@ fn main() {
                     if ctx.input().key_pressed(Key::Space) {
                         play_sfx(ctx, "ui.wav");
                         if all_clear {
-                            ctx.quit();
+                            phase = Phase::ChapterSelect;
+                            chapter_cursor = progress.unlocked_chapter.min(CHAPTERS.len() - 1);
                         } else if !advance_level(
                             ctx,
                             &mut level_index,
                             &mut level,
                             &mut player_pos,
+                            &mut controller,
                             &mut phase,
                             &mut elapsed,
                             &mut squash,
@@ -459,7 +936,7 @@ fn main() {
                             &mut cam_target,
                             &mut physics_ready,
                         ) {
-                            ctx.quit();
+                            phase = Phase::ChapterSelect;
                         }
                     }
                 }
@@ -504,14 +981,13 @@ fn main() {
                         prompt,
                     );
 
-                    if ctx.input().key_pressed(Key::Space)
-                        || ctx.input().key_pressed(Key::R)
-                    {
+                    if ctx.input().key_pressed(Key::Space) || ctx.input().key_pressed(Key::R) {
                         play_sfx(ctx, "ui.wav");
                         reset_level(
                             ctx,
                             &level,
                             &mut player_pos,
+                            &mut controller,
                             &mut phase,
                             &mut elapsed,
                             &mut squash,
@@ -528,6 +1004,7 @@ fn reset_level(
     ctx: &mut Context<'_>,
     level: &Level,
     player_pos: &mut Vec3,
+    controller: &mut CharacterController,
     phase: &mut Phase,
     elapsed: &mut f32,
     squash: &mut f32,
@@ -535,13 +1012,14 @@ fn reset_level(
     velocity_xz: &mut Vec2,
 ) {
     *player_pos = level.player_start;
+    *controller =
+        CharacterController::planar(level.player_start, level.player_half).with_max_speed(5.2);
     *phase = Phase::Playing;
     *elapsed = 0.0;
     *squash = 0.3;
     *flash = 0.0;
     *velocity_xz = Vec2::ZERO;
     apply_player_visual(ctx, level, *player_pos, *squash, 1.0);
-    // Restore hazard rest poses.
     for h in &level.hazards {
         if let Some(ent) = ctx.world_mut().get_mut(&h.name) {
             ent.transform.set_translation(h.center);
@@ -602,10 +1080,10 @@ fn follow_camera(
     dt: f32,
     speed: f32,
 ) {
-    let look_ahead = Vec3::new(velocity_xz.x, 0.0, velocity_xz.y) * 0.35;
-    let desired_target = Vec3::new(player_pos.x, 0.4, player_pos.z) + look_ahead;
-    let desired_eye = desired_target + level.cam_eye_offset;
-    let mut desired_eye = desired_eye;
+    // Third-person follow: elevated chase cam with light look-ahead.
+    let look_ahead = Vec3::new(velocity_xz.x, 0.0, velocity_xz.y) * 0.4;
+    let desired_target = Vec3::new(player_pos.x, 0.45, player_pos.z) + look_ahead;
+    let mut desired_eye = desired_target + level.cam_eye_offset;
     desired_eye.y = level.cam_height;
 
     let t = (1.0 - (-speed * dt).exp()).clamp(0.0, 1.0);
@@ -628,19 +1106,31 @@ fn draw_flash(ctx: &mut Context<'_>, flash: f32, color: Color) {
     ctx.ui().rect(0.0, 0.0, 1.0, 1.0, tint);
 }
 
-fn draw_hud(ctx: &mut Context<'_>, level_index: usize, elapsed: f32) {
-    let level_line = format!("Level {}/{}", level_index + 1, LEVEL_FILES.len());
-    let time_line = format!("{elapsed:.1}s");
+fn draw_hud(ctx: &mut Context<'_>, level_index: usize, elapsed: f32, progress: &Progress) {
+    let ch = chapter_for_level(level_index);
+    let ch_name = CHAPTERS[ch].name;
+    let level_name = LEVEL_NAMES.get(level_index).copied().unwrap_or("?");
+    let level_line = format!(
+        "{}  ·  {}/{}  {}",
+        ch_name,
+        level_index + 1,
+        LEVEL_FILES.len(),
+        level_name
+    );
+    let time_line = match progress.best.get(level_index).copied().flatten() {
+        Some(best) => format!("{elapsed:.1}s  ·  best {best:.1}s"),
+        None => format!("{elapsed:.1}s"),
+    };
     ctx.ui()
-        .text(0.03, 0.03, 0.028, Color::rgb(0.9, 0.92, 0.95), &level_line);
+        .text(0.03, 0.03, 0.024, Color::rgb(0.9, 0.92, 0.95), &level_line);
     ctx.ui()
-        .text(0.03, 0.07, 0.028, Color::rgb(0.75, 0.9, 0.95), &time_line);
+        .text(0.03, 0.07, 0.026, Color::rgb(0.75, 0.9, 0.95), &time_line);
     ctx.ui().text(
         0.03,
         0.94,
-        0.022,
+        0.02,
         Color::rgb(0.65, 0.68, 0.74),
-        "WASD move  R retry  Esc quit",
+        "WASD move  R retry  Esc chapters",
     );
 }
 
@@ -723,6 +1213,51 @@ mod tests {
     use super::*;
     use kerabit::{Color, Quat, SceneCamera, SceneLight, SceneMaterial};
 
+    /// Surface gap between two AABBs along an axis (positive = separation).
+    fn aabb_gap_axis(a_c: f32, a_h: f32, b_c: f32, b_h: f32) -> f32 {
+        let a_min = a_c - a_h;
+        let a_max = a_c + a_h;
+        let b_min = b_c - b_h;
+        let b_max = b_c + b_h;
+        if a_max < b_min {
+            b_min - a_max
+        } else if b_max < a_min {
+            a_min - b_max
+        } else {
+            0.0
+        }
+    }
+
+    /// Facing wall pairs that form a narrow gate must leave ≥ 1.0 clear space.
+    fn min_gate_gap(walls: &[(Vec3, Vec3)]) -> Option<f32> {
+        let mut min_gap = f32::INFINITY;
+        for i in 0..walls.len() {
+            for j in (i + 1)..walls.len() {
+                let (ac, ah) = walls[i];
+                let (bc, bh) = walls[j];
+                let dx = (ac.x - bc.x).abs();
+                let dz = (ac.z - bc.z).abs();
+                if dx < 0.15 && dz > 0.5 && ah.z >= 0.5 && bh.z >= 0.5 {
+                    let gap = aabb_gap_axis(ac.z, ah.z, bc.z, bh.z);
+                    if gap > 0.05 && gap < 4.0 {
+                        min_gap = min_gap.min(gap);
+                    }
+                }
+                if dz < 0.15 && dx > 0.5 && ah.x >= 0.5 && bh.x >= 0.5 {
+                    let gap = aabb_gap_axis(ac.x, ah.x, bc.x, bh.x);
+                    if gap > 0.05 && gap < 4.0 {
+                        min_gap = min_gap.min(gap);
+                    }
+                }
+            }
+        }
+        if min_gap.is_finite() {
+            Some(min_gap)
+        } else {
+            None
+        }
+    }
+
     fn entity(name: &str, tags: &[&str], at: Vec3, scale: Vec3) -> SceneEntity {
         SceneEntity {
             name: name.into(),
@@ -731,12 +1266,15 @@ mod tests {
             material: SceneMaterial {
                 color: Color::WHITE,
                 roughness: 0.5,
+                metallic: 0.0,
                 texture: None,
             },
             at,
             rotation: Quat::IDENTITY,
             scale,
             parent: None,
+            components: Default::default(),
+            extras: Default::default(),
         }
     }
 
@@ -765,12 +1303,15 @@ mod tests {
                     material: SceneMaterial {
                         color: Color::GRAY,
                         roughness: 0.9,
+                        metallic: 0.0,
                         texture: None,
                     },
                     at: Vec3::ZERO,
                     rotation: Quat::IDENTITY,
                     scale: Vec3::ONE,
                     parent: None,
+                    components: Default::default(),
+                    extras: Default::default(),
                 },
                 entity("hero", &["player"], Vec3::new(-5.0, 0.5, 0.0), Vec3::ONE),
                 entity(
@@ -792,6 +1333,8 @@ mod tests {
                     Vec3::new(1.6, 0.6, 1.6),
                 ),
             ],
+            components: Default::default(),
+            extras: Default::default(),
         };
 
         let level = Level::from_scene(&scene);
@@ -831,6 +1374,8 @@ mod tests {
                 entity("hazard_a", &[], Vec3::new(1.0, 0.45, 0.0), Vec3::ONE),
                 entity("goal", &[], Vec3::new(3.0, 0.3, 0.0), Vec3::splat(1.0)),
             ],
+            components: Default::default(),
+            extras: Default::default(),
         };
         let level = Level::from_scene(&scene);
         assert_eq!(level.walls.len(), 1);
@@ -859,11 +1404,23 @@ mod tests {
     }
 
     #[test]
-    fn all_level_files_load_with_required_roles() {
+    fn campaign_has_ten_plus_levels_and_three_chapters() {
         assert!(
-            LEVEL_FILES.len() >= 5,
-            "E4 accept: need at least 5 Reach levels"
+            LEVEL_FILES.len() >= 10,
+            "M5 accept: need at least 10 Reach levels, got {}",
+            LEVEL_FILES.len()
         );
+        assert_eq!(LEVEL_FILES.len(), LEVEL_NAMES.len());
+        assert_eq!(CHAPTERS.len(), 3);
+        assert_eq!(CHAPTERS[0].start, 0);
+        assert_eq!(CHAPTERS.last().unwrap().end, LEVEL_FILES.len());
+        for w in CHAPTERS.windows(2) {
+            assert_eq!(w[0].end, w[1].start);
+        }
+    }
+
+    #[test]
+    fn all_level_files_load_with_required_roles() {
         for file in LEVEL_FILES {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("levels")
@@ -883,11 +1440,55 @@ mod tests {
             );
             let level = Level::from_scene(&scene);
             assert!(
-                (level.player_half.x - 0.5).abs() < 1e-3,
+                (level.player_half.x - 0.5).abs() < 1e-3
+                    && (level.player_half.y - 0.5).abs() < 1e-3
+                    && (level.player_half.z - 0.5).abs() < 1e-3,
                 "{file}: expected unit-cube player half=0.5, got {:?}",
                 level.player_half
             );
             assert!(!level.hazards.is_empty(), "{file}: expected hazards");
+            if let Some(gap) = min_gate_gap(&level.walls) {
+                assert!(
+                    gap + 1e-3 >= 1.0,
+                    "{file}: gate dodge gap {gap:.3} < 1.0"
+                );
+            }
         }
+    }
+
+    #[test]
+    fn progress_parse_roundtrip() {
+        let text = "\
+# comment
+v1
+unlock 1
+best 0 12.500
+best 3 20.125
+";
+        let p = Progress::parse(text).expect("parse");
+        assert_eq!(p.unlocked_chapter, 1);
+        assert_eq!(p.best[0], Some(12.5));
+        assert_eq!(p.best[3], Some(20.125));
+        assert!(p.best[1].is_none());
+    }
+
+    #[test]
+    fn progress_record_clear_unlocks_next_chapter() {
+        let mut p = Progress::fresh();
+        for i in 0..4 {
+            p.record_clear(i, 10.0 + i as f32);
+        }
+        assert_eq!(p.unlocked_chapter, 1);
+        assert!(p.chapter_best_sum(0).is_some());
+    }
+
+    #[test]
+    fn progress_path_is_named_reach_progress() {
+        let path = progress_path();
+        assert_eq!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some("reach_progress.txt")
+        );
+        assert!(path.parent().is_some());
     }
 }

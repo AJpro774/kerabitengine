@@ -3,10 +3,11 @@ name = "kerabit-audio"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Audio playback for Kerabit (rodio)"
+description = "Audio playback for Kerabit (rodio) — spatial, buses, streaming"
 rust-version.workspace = true
 
 [dependencies]
+kerabit-math = { workspace = true }
 rodio = { workspace = true }
 thiserror = { workspace = true }
 

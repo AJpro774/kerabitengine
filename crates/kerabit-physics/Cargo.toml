@@ -3,7 +3,7 @@ name = "kerabit-physics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "AABB collision, raycast, and kinematic move for Kerabit"
+description = "AABB collision, raycast, dynamics, and character control for Kerabit"
 rust-version.workspace = true
 
 [dependencies]

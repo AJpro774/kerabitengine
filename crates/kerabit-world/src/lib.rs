@@ -1,10 +1,14 @@
 //! World, entities, and transforms for Kerabit.
 //!
 //! P4: parent/child hierarchy with world-matrix propagation.
+//! M2: enable/disable, tags, and layer query helpers.
 
 use std::collections::{HashMap, HashSet};
 
 use kerabit_math::{Mat4, Quat, Vec3};
+
+/// Default collision / query layer (bit 0).
+pub const LAYER_DEFAULT: u32 = 1;
 
 /// Opaque entity identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -190,6 +194,12 @@ pub struct Entity {
     pub transform: Transform,
     parent: Option<EntityId>,
     children: Vec<EntityId>,
+    /// When `false`, the entity is skipped by draw and optional game queries.
+    enabled: bool,
+    /// Gameplay / authoring tags (exact string match).
+    tags: Vec<String>,
+    /// Bitmask layer for queries (default [`LAYER_DEFAULT`]).
+    layer: u32,
 }
 
 impl Entity {
@@ -211,6 +221,62 @@ impl Entity {
     #[inline]
     pub fn children(&self) -> &[EntityId] {
         &self.children
+    }
+
+    /// Whether this entity participates in draw / enabled queries.
+    #[inline]
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Enable or disable this entity.
+    #[inline]
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    /// Gameplay tags on this entity.
+    #[inline]
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    /// True if this entity carries `tag` (exact string match).
+    #[inline]
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tags.iter().any(|t| t == tag)
+    }
+
+    /// Add a tag if not already present.
+    pub fn add_tag(&mut self, tag: impl Into<String>) {
+        let tag = tag.into();
+        if !self.tags.iter().any(|t| t == &tag) {
+            self.tags.push(tag);
+        }
+    }
+
+    /// Remove a tag. Returns `true` if it was present.
+    pub fn remove_tag(&mut self, tag: &str) -> bool {
+        let before = self.tags.len();
+        self.tags.retain(|t| t != tag);
+        self.tags.len() != before
+    }
+
+    /// Replace the full tag list.
+    pub fn set_tags(&mut self, tags: impl IntoIterator<Item = String>) {
+        self.tags = tags.into_iter().collect();
+    }
+
+    /// Bitmask layer used by [`World::entities_on_layer`].
+    #[inline]
+    pub fn layer(&self) -> u32 {
+        self.layer
+    }
+
+    /// Set the bitmask layer (typically a single bit or OR of bits).
+    #[inline]
+    pub fn set_layer(&mut self, layer: u32) {
+        self.layer = layer;
     }
 
     /// Convenience: rotate around Y (radians). Marks transform dirty.
@@ -411,6 +477,56 @@ impl World {
         self.entities.values_mut()
     }
 
+    /// Iterate only enabled entities.
+    pub fn iter_enabled(&self) -> impl Iterator<Item = &Entity> {
+        self.entities.values().filter(|e| e.enabled)
+    }
+
+    /// Enable or disable an entity by id. Returns `false` if missing.
+    pub fn set_enabled(&mut self, id: EntityId, enabled: bool) -> bool {
+        if let Some(e) = self.entities.get_mut(&id) {
+            e.enabled = enabled;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Enable or disable a named entity. Returns `false` if missing.
+    pub fn set_enabled_named(&mut self, name: &str, enabled: bool) -> bool {
+        let Some(id) = self.id_of(name) else {
+            return false;
+        };
+        self.set_enabled(id, enabled)
+    }
+
+    /// Collect ids of entities that carry `tag`.
+    pub fn entities_with_tag(&self, tag: &str) -> Vec<EntityId> {
+        self.entities
+            .values()
+            .filter(|e| e.has_tag(tag))
+            .map(|e| e.id)
+            .collect()
+    }
+
+    /// Collect ids of entities whose layer overlaps `mask` (bitwise AND ≠ 0).
+    pub fn entities_on_layer(&self, mask: u32) -> Vec<EntityId> {
+        self.entities
+            .values()
+            .filter(|e| e.layer & mask != 0)
+            .map(|e| e.id)
+            .collect()
+    }
+
+    /// Collect ids of enabled entities that carry `tag`.
+    pub fn enabled_with_tag(&self, tag: &str) -> Vec<EntityId> {
+        self.entities
+            .values()
+            .filter(|e| e.enabled && e.has_tag(tag))
+            .map(|e| e.id)
+            .collect()
+    }
+
     /// Rebuild local matrices for every dirty transform.
     pub fn update_local_matrices(&mut self) {
         for entity in self.entities.values_mut() {
@@ -493,6 +609,9 @@ impl World {
                 transform,
                 parent: None,
                 children: Vec::new(),
+                enabled: true,
+                tags: Vec::new(),
+                layer: LAYER_DEFAULT,
             },
         );
         id
@@ -680,5 +799,25 @@ mod tests {
         let b = world.spawn_named("b", Transform::IDENTITY);
         world.set_parent(b, Some(a));
         world.set_parent(a, Some(b));
+    }
+
+    #[test]
+    fn enable_disable_and_tag_queries() {
+        let mut world = World::new();
+        let a = world.spawn_named("player", Transform::IDENTITY);
+        let b = world.spawn_named("wall", Transform::IDENTITY);
+        world.get_mut_by_id(a).unwrap().add_tag("player");
+        world.get_mut_by_id(b).unwrap().add_tag("wall");
+        world.get_mut_by_id(b).unwrap().set_layer(1 << 1);
+
+        assert_eq!(world.entities_with_tag("player"), vec![a]);
+        assert!(world.set_enabled_named("wall", false));
+        assert!(!world.get("wall").unwrap().is_enabled());
+        assert_eq!(world.iter_enabled().count(), 1);
+        assert_eq!(world.enabled_with_tag("wall").len(), 0);
+        assert_eq!(world.entities_on_layer(1 << 1), vec![b]);
+        assert!(world.get_mut("player").unwrap().has_tag("player"));
+        assert!(world.get_mut("player").unwrap().remove_tag("player"));
+        assert!(!world.get("player").unwrap().has_tag("player"));
     }
 }

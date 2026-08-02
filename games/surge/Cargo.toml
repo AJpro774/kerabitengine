@@ -3,7 +3,7 @@ name = "surge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Surge — Kerabit score-attack arena (survive the waves)"
+description = "Surge — Kerabit score-attack (timed ranked + endless)"
 rust-version.workspace = true
 publish = false
 

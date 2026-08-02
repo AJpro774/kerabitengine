@@ -1,0 +1,24 @@
+.vercel/
+.fake-home/
+.vhome/
+.vercel-home/
+public/
+
+# Local deploy / MCP scaffolding (never commit)
+.mcp-*
+.deploy-*
+.b64-*
+.compact-*
+.webm-*
+.mp4-*
+.pkg-*
+.smoke-*
+.vercel-*
+.last-*
+bundle.tgz.b64
+.deploy-parts/
+.deploy-tiny-parts/
+.deploy-chunks/
+.deploy-extract/
+.b64-parts/
+.mcp-files/

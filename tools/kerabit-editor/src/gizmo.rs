@@ -7,7 +7,7 @@ use kerabit_render::{Camera, Ray};
 
 use crate::orbit::OrbitCamera;
 
-const SNAP: f32 = 0.5;
+const DEFAULT_SNAP: f32 = 0.5;
 const HANDLE_PX: f32 = 10.0;
 const AXIS_LEN: f32 = 1.25;
 
@@ -53,16 +53,34 @@ impl Axis {
     }
 }
 
-#[derive(Default)]
 pub struct GizmoState {
     pub mode: GizmoMode,
     pub snap: bool,
+    pub snap_size: f32,
     drag_axis: Option<Axis>,
     drag_start_mouse: Pos2,
     /// Translate: start position. Rotate: start quat. Scale: start scale.
     drag_start_at: Vec3,
     drag_start_rot: Quat,
     drag_start_scale: Vec3,
+    /// True after drag_started until consumed (for undo checkpoint).
+    pub drag_began_this_frame: bool,
+}
+
+impl Default for GizmoState {
+    fn default() -> Self {
+        Self {
+            mode: GizmoMode::Translate,
+            snap: false,
+            snap_size: DEFAULT_SNAP,
+            drag_axis: None,
+            drag_start_mouse: Pos2::ZERO,
+            drag_start_at: Vec3::ZERO,
+            drag_start_rot: Quat::IDENTITY,
+            drag_start_scale: Vec3::ONE,
+            drag_began_this_frame: false,
+        }
+    }
 }
 
 impl GizmoState {
@@ -93,6 +111,7 @@ pub fn interact(
     state: &mut GizmoState,
     edit: &mut GizmoEdit,
 ) -> bool {
+    state.drag_began_this_frame = false;
     let mut cam = orbit.to_camera();
     cam.set_aspect(rect.width() / rect.height().max(1.0));
 
@@ -123,6 +142,7 @@ pub fn interact(
                 }
             }
             if state.drag_axis.is_some() {
+                state.drag_began_this_frame = true;
                 state.drag_start_mouse = pointer;
                 state.drag_start_at = edit.at;
                 state.drag_start_rot = edit.rotation;
@@ -217,6 +237,7 @@ fn apply_drag(
     pointer: Pos2,
     edit: &mut GizmoEdit,
 ) -> bool {
+    let snap = state.snap_size.max(0.05);
     let delta = pointer - state.drag_start_mouse;
     match state.mode {
         GizmoMode::Translate => {
@@ -227,7 +248,7 @@ fn apply_drag(
             let world_per_px = gizmo_world_scale(orbit) * 0.02;
             let mut offset = axis.dir() * along * world_per_px;
             if state.snap {
-                offset = snap_vec(offset);
+                offset = snap_vec(offset, snap);
             }
             let next = state.drag_start_at + offset;
             if next != edit.at {
@@ -267,7 +288,7 @@ fn apply_drag(
                 Axis::Z => s.z = (state.drag_start_scale.z + add).max(0.05),
             }
             if state.snap {
-                s = snap_vec(s).max(Vec3::splat(0.05));
+                s = snap_vec(s, snap).max(Vec3::splat(0.05));
             }
             if s != edit.scale {
                 edit.scale = s;
@@ -278,11 +299,12 @@ fn apply_drag(
     false
 }
 
-fn snap_vec(v: Vec3) -> Vec3 {
+fn snap_vec(v: Vec3, snap: f32) -> Vec3 {
+    let s = snap.max(1e-4);
     Vec3::new(
-        (v.x / SNAP).round() * SNAP,
-        (v.y / SNAP).round() * SNAP,
-        (v.z / SNAP).round() * SNAP,
+        (v.x / s).round() * s,
+        (v.y / s).round() * s,
+        (v.z / s).round() * s,
     )
 }
 
@@ -329,4 +351,9 @@ pub fn picking_ray(orbit: &OrbitCamera, rect: egui::Rect, pointer: Pos2) -> Ray 
         [rect.width(), rect.height()],
     );
     kerabit_render::ray_from_ndc(&cam, ndc_x, ndc_y)
+}
+
+/// Snap a world position to the grid.
+pub fn snap_position(at: Vec3, snap: f32) -> Vec3 {
+    snap_vec(at, snap)
 }

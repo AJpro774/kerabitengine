@@ -1,5 +1,6 @@
 /target/
 /dist/
+/tools/bin/
 **/*.rs.bk
 .DS_Store
 *.swp
@@ -8,3 +9,5 @@
 .idea/
 .vscode/
 *.pdb
+__pycache__/
+*.pyc

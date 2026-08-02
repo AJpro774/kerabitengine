@@ -1,0 +1,47 @@
+# Optional Reach player packaging — attach macOS + Windows zips as artifacts.
+# Does not run on every PR (GPU/signing not required; release binaries only).
+#
+# Trigger: Actions → Package Reach → Run workflow
+# Or: gh workflow run package-reach.yml
+name: Package Reach
+
+on:
+  workflow_dispatch:
+  # Uncomment when cutting GitHub Releases from tags:
+  # push:
+  #   tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package-macos:
+    name: macOS Reach.zip
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+      - name: Package Reach.app
+        run: ./scripts/package-reach.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reach-macos
+          path: dist/Reach-macos.zip
+          if-no-files-found: error
+
+  package-windows:
+    name: Windows Reach.zip
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+      - name: Package Reach folder
+        shell: pwsh
+        run: ./scripts/package-reach-windows.ps1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reach-windows
+          path: dist/Reach-windows.zip
+          if-no-files-found: error

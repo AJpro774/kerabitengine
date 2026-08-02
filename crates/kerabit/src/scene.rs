@@ -1,5 +1,6 @@
 //! `.kerabit.json` scene save/load mirroring the public spawn API.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -29,7 +30,15 @@ pub enum SceneError {
 }
 
 /// Current `.kerabit.json` format version.
+///
+/// Stays at **1** for additive fields (`tags`, `components`, `extras`). Bump only when
+/// existing files would fail to load without a migration.
 pub const SCENE_VERSION: u32 = 1;
+
+/// Reserved JSON object for future typed scene / entity data (Summit M1+).
+///
+/// Omitted or `{}` in JSON; engines ignore unknown keys until a feature consumes them.
+pub type SceneMap = serde_json::Map<String, serde_json::Value>;
 
 /// Authoring scene: entities, camera, light, clear/ambient — mirrors [`Kerabit`] spawn.
 #[derive(Clone, Debug, PartialEq)]
@@ -39,6 +48,10 @@ pub struct Scene {
     pub camera: SceneCamera,
     pub light: SceneLight,
     pub entities: Vec<SceneEntity>,
+    /// Reserved root-level component bag (future systems). Empty today.
+    pub components: SceneMap,
+    /// Reserved root-level extras bag (tooling / forward-compat). Empty today.
+    pub extras: SceneMap,
 }
 
 /// Camera fields stored in a scene file.
@@ -72,6 +85,10 @@ pub struct SceneEntity {
     pub rotation: Quat,
     pub scale: Vec3,
     pub parent: Option<String>,
+    /// Reserved per-entity component bag (future systems). Empty today; ignored at spawn.
+    pub components: SceneMap,
+    /// Reserved per-entity extras bag (tooling / forward-compat). Empty today.
+    pub extras: SceneMap,
 }
 
 /// Mesh primitive or asset path (mirrors [`Mesh`] builders).
@@ -83,11 +100,13 @@ pub enum SceneMesh {
     Gltf { path: PathBuf },
 }
 
-/// Material tint / roughness / optional albedo texture path.
+/// Material tint / roughness / metallic / optional albedo texture path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SceneMaterial {
     pub color: Color,
     pub roughness: f32,
+    /// Metalness (`0` dielectric … `1` metal). Default `0` when omitted from JSON.
+    pub metallic: f32,
     pub texture: Option<PathBuf>,
 }
 
@@ -109,6 +128,8 @@ impl Default for Scene {
                 color: Color::WHITE,
             },
             entities: Vec::new(),
+            components: SceneMap::new(),
+            extras: SceneMap::new(),
         }
     }
 }
@@ -146,6 +167,17 @@ impl Scene {
         Kerabit::new(title).scene(self)
     }
 
+    /// Collect entities by index into a [`Prefab`] (for editor Save Prefab).
+    pub fn prefab_from_indices(&self, indices: &[usize]) -> Prefab {
+        let mut entities = Vec::with_capacity(indices.len());
+        for &i in indices {
+            if let Some(e) = self.entities.get(i) {
+                entities.push(e.clone());
+            }
+        }
+        Prefab { entities }
+    }
+
     /// Convert scene entities into spawn descriptors (resolves asset paths).
     pub fn build_entities(&self) -> Result<Vec<Entity>, SceneError> {
         let mut out = Vec::with_capacity(self.entities.len());
@@ -168,6 +200,107 @@ impl Scene {
     }
 }
 
+/// Reusable entity group for editor instancing (`.kerabit.prefab.json`).
+///
+/// Same entity wire format as scenes (mesh, material, tags, transforms, parent,
+/// components/extras). No camera/light — instance into a [`Scene`] via
+/// [`Prefab::instantiate`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Prefab {
+    pub entities: Vec<SceneEntity>,
+}
+
+impl Prefab {
+    /// Load a `.kerabit.prefab.json` file from disk.
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, SceneError> {
+        let text = fs::read_to_string(path)?;
+        Self::from_json(&text)
+    }
+
+    /// Parse prefab JSON text.
+    pub fn from_json(text: &str) -> Result<Self, SceneError> {
+        let file: PrefabFile = serde_json::from_str(text)?;
+        if file.version != SCENE_VERSION {
+            return Err(SceneError::UnsupportedVersion(file.version));
+        }
+        Ok(Prefab {
+            entities: file.entities.into_iter().map(EntityFile::into_scene).collect(),
+        })
+    }
+
+    /// Serialize to pretty-printed JSON.
+    pub fn to_json(&self) -> Result<String, SceneError> {
+        let file = PrefabFile {
+            version: SCENE_VERSION,
+            entities: self.entities.iter().map(EntityFile::from_scene).collect(),
+        };
+        Ok(serde_json::to_string_pretty(&file)?)
+    }
+
+    /// Write a `.kerabit.prefab.json` file.
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), SceneError> {
+        fs::write(path, self.to_json()?)?;
+        Ok(())
+    }
+
+    /// Clone entities into `scene` with unique names; returns indices of new entities.
+    ///
+    /// Parent links among prefab members are remapped to the new names. Parents
+    /// outside the prefab are cleared. Positions are offset by `offset`.
+    pub fn instantiate(&self, scene: &mut Scene, offset: Vec3) -> Vec<usize> {
+        if self.entities.is_empty() {
+            return Vec::new();
+        }
+
+        let existing: Vec<String> = scene.entities.iter().map(|e| e.name.clone()).collect();
+        let mut name_map: HashMap<String, String> = HashMap::new();
+        for e in &self.entities {
+            let new_name = unique_entity_name(&existing, &name_map, &e.name);
+            name_map.insert(e.name.clone(), new_name);
+        }
+
+        let start = scene.entities.len();
+        for e in &self.entities {
+            let new_name = name_map.get(&e.name).cloned().unwrap_or_else(|| e.name.clone());
+            let parent = e.parent.as_ref().and_then(|p| name_map.get(p).cloned());
+            scene.entities.push(SceneEntity {
+                name: new_name,
+                tags: e.tags.clone(),
+                mesh: e.mesh.clone(),
+                material: e.material.clone(),
+                at: e.at + offset,
+                rotation: e.rotation,
+                scale: e.scale,
+                parent,
+                components: e.components.clone(),
+                extras: e.extras.clone(),
+            });
+        }
+        (start..scene.entities.len()).collect()
+    }
+}
+
+fn unique_entity_name(
+    existing: &[String],
+    pending: &HashMap<String, String>,
+    base: &str,
+) -> String {
+    let taken = |candidate: &str| {
+        existing.iter().any(|n| n == candidate)
+            || pending.values().any(|n| n == candidate)
+    };
+    if !taken(base) {
+        return base.to_string();
+    }
+    for i in 2..10_000 {
+        let candidate = format!("{base}_{i}");
+        if !taken(&candidate) {
+            return candidate;
+        }
+    }
+    format!("{base}_{}", existing.len() + pending.len() + 1)
+}
+
 impl SceneEntity {
     /// Returns true if this entity carries `tag` (exact string match).
     pub fn has_tag(&self, tag: &str) -> bool {
@@ -188,7 +321,8 @@ impl SceneEntity {
             .material(material)
             .at(self.at)
             .rotation(self.rotation)
-            .scale(self.scale);
+            .scale(self.scale)
+            .tags(self.tags.clone());
         if let Some(parent) = &self.parent {
             entity = entity.parent(parent.clone());
         }
@@ -212,7 +346,9 @@ impl SceneMesh {
 
 impl SceneMaterial {
     fn to_material(&self) -> Result<Material, SceneError> {
-        let mut m = Material::color(self.color).roughness(self.roughness);
+        let mut m = Material::color(self.color)
+            .roughness(self.roughness)
+            .metallic(self.metallic);
         if let Some(path) = &self.texture {
             let tex = crate::Texture::load_png(path)?;
             m = m.with_texture(tex);
@@ -246,6 +382,13 @@ impl Kerabit {
 // --- Serde wire format -------------------------------------------------------
 
 #[derive(Serialize, Deserialize)]
+struct PrefabFile {
+    version: u32,
+    #[serde(default)]
+    entities: Vec<EntityFile>,
+}
+
+#[derive(Serialize, Deserialize)]
 struct SceneFile {
     version: u32,
     #[serde(default = "default_clear")]
@@ -256,6 +399,12 @@ struct SceneFile {
     light: LightFile,
     #[serde(default)]
     entities: Vec<EntityFile>,
+    /// Additive reserved bag (scene version 1); omitted when empty.
+    #[serde(default, skip_serializing_if = "SceneMap::is_empty")]
+    components: SceneMap,
+    /// Additive reserved bag (scene version 1); omitted when empty.
+    #[serde(default, skip_serializing_if = "SceneMap::is_empty")]
+    extras: SceneMap,
 }
 
 fn default_clear() -> [f32; 3] {
@@ -319,6 +468,12 @@ struct EntityFile {
     scale: [f32; 3],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     parent: Option<String>,
+    /// Additive reserved bag (scene version 1); omitted when empty.
+    #[serde(default, skip_serializing_if = "SceneMap::is_empty")]
+    components: SceneMap,
+    /// Additive reserved bag (scene version 1); omitted when empty.
+    #[serde(default, skip_serializing_if = "SceneMap::is_empty")]
+    extras: SceneMap,
 }
 
 fn default_zero3() -> [f32; 3] {
@@ -348,6 +503,8 @@ struct MaterialFile {
     color: [f32; 3],
     #[serde(default = "default_roughness")]
     roughness: f32,
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    metallic: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     texture: Option<String>,
 }
@@ -356,11 +513,16 @@ fn default_roughness() -> f32 {
     0.5
 }
 
+fn is_zero_f32(v: &f32) -> bool {
+    *v == 0.0
+}
+
 impl Default for MaterialFile {
     fn default() -> Self {
         Self {
             color: default_white(),
             roughness: default_roughness(),
+            metallic: 0.0,
             texture: None,
         }
     }
@@ -385,6 +547,8 @@ impl SceneFile {
                 color: scene.light.color.to_rgb_array(),
             },
             entities: scene.entities.iter().map(EntityFile::from_scene).collect(),
+            components: scene.components.clone(),
+            extras: scene.extras.clone(),
         }
     }
 
@@ -405,6 +569,8 @@ impl SceneFile {
                 color: color_from_rgb(self.light.color),
             },
             entities: self.entities.into_iter().map(EntityFile::into_scene).collect(),
+            components: self.components,
+            extras: self.extras,
         }
     }
 }
@@ -418,6 +584,7 @@ impl EntityFile {
             material: MaterialFile {
                 color: e.material.color.to_rgb_array(),
                 roughness: e.material.roughness,
+                metallic: e.material.metallic,
                 texture: e
                     .material
                     .texture
@@ -428,6 +595,8 @@ impl EntityFile {
             rotation: quat_to_arr(e.rotation),
             scale: vec3_to_arr(e.scale),
             parent: e.parent.clone(),
+            components: e.components.clone(),
+            extras: e.extras.clone(),
         }
     }
 
@@ -439,12 +608,15 @@ impl EntityFile {
             material: SceneMaterial {
                 color: color_from_rgb(self.material.color),
                 roughness: self.material.roughness,
+                metallic: self.material.metallic,
                 texture: self.material.texture.map(PathBuf::from),
             },
             at: vec3_from_arr(self.at),
             rotation: quat_from_arr(self.rotation),
             scale: vec3_from_arr(self.scale),
             parent: self.parent,
+            components: self.components,
+            extras: self.extras,
         }
     }
 }
@@ -531,12 +703,15 @@ mod tests {
                     material: SceneMaterial {
                         color: Color::GRAY,
                         roughness: 0.9,
+                        metallic: 0.0,
                         texture: None,
                     },
                     at: Vec3::ZERO,
                     rotation: Quat::IDENTITY,
                     scale: Vec3::ONE,
                     parent: None,
+                    components: SceneMap::new(),
+                    extras: SceneMap::new(),
                 },
                 SceneEntity {
                     name: "box".into(),
@@ -545,12 +720,15 @@ mod tests {
                     material: SceneMaterial {
                         color: Color::ORANGE,
                         roughness: 0.35,
+                        metallic: 0.0,
                         texture: None,
                     },
                     at: vec3(0.0, 0.5, 0.0),
                     rotation: Quat::IDENTITY,
                     scale: vec3(1.0, 2.0, 1.0),
                     parent: None,
+                    components: SceneMap::new(),
+                    extras: SceneMap::new(),
                 },
                 SceneEntity {
                     name: "child".into(),
@@ -559,14 +737,19 @@ mod tests {
                     material: SceneMaterial {
                         color: Color::WHITE,
                         roughness: 0.5,
+                        metallic: 0.0,
                         texture: None,
                     },
                     at: vec3(1.0, 0.0, 0.0),
                     rotation: Quat::IDENTITY,
                     scale: Vec3::ONE,
                     parent: Some("box".into()),
+                    components: SceneMap::new(),
+                    extras: SceneMap::new(),
                 },
             ],
+            components: SceneMap::new(),
+            extras: SceneMap::new(),
         };
 
         let json = scene.to_json().expect("serialize");
@@ -591,8 +774,58 @@ mod tests {
         )
         .expect("load without tags");
         assert!(scene.entities[0].tags.is_empty());
+        assert!(scene.entities[0].components.is_empty());
+        assert!(scene.entities[0].extras.is_empty());
+        assert!(scene.components.is_empty());
+        assert!(scene.extras.is_empty());
         let out = scene.to_json().unwrap();
         assert!(!out.contains("\"tags\""));
+        assert!(!out.contains("\"components\""));
+        assert!(!out.contains("\"extras\""));
+    }
+
+    #[test]
+    fn components_and_extras_round_trip() {
+        let json = r#"{
+          "version": 1,
+          "camera": {"fov_y": 60, "eye": [0, 0, 5], "target": [0, 0, 0]},
+          "light": {"direction": [0, -1, 0]},
+          "extras": {"author": "summit-m0"},
+          "components": {"future": true},
+          "entities": [
+            {
+              "name": "solo",
+              "mesh": {"type": "cube"},
+              "components": {"rigid_body": {"mass": 1.0}},
+              "extras": {"editor_locked": false}
+            }
+          ]
+        }"#;
+        let scene = Scene::from_json(json).expect("load with reserved bags");
+        assert_eq!(
+            scene.extras.get("author").and_then(|v| v.as_str()),
+            Some("summit-m0")
+        );
+        assert_eq!(
+            scene.components.get("future").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        let e = &scene.entities[0];
+        assert_eq!(
+            e.components
+                .get("rigid_body")
+                .and_then(|v| v.get("mass"))
+                .and_then(|v| v.as_f64()),
+            Some(1.0)
+        );
+        assert_eq!(
+            e.extras
+                .get("editor_locked")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        let round = Scene::from_json(&scene.to_json().unwrap()).unwrap();
+        assert_eq!(round, scene);
     }
 
     #[test]
@@ -614,5 +847,75 @@ mod tests {
         assert_eq!(round, scene);
         let entities = scene.build_entities().expect("build spawn descriptors");
         assert_eq!(entities.len(), 7);
+    }
+
+    #[test]
+    fn prefab_round_trip_and_instantiate() {
+        let prefab = Prefab {
+            entities: vec![
+                SceneEntity {
+                    name: "hazard".into(),
+                    tags: vec!["hazard".into()],
+                    mesh: SceneMesh::Cube,
+                    material: SceneMaterial {
+                        color: Color::rgb(0.9, 0.1, 0.2),
+                        roughness: 0.6,
+                        metallic: 0.0,
+                        texture: None,
+                    },
+                    at: vec3(0.0, 0.45, 0.0),
+                    rotation: Quat::IDENTITY,
+                    scale: Vec3::ONE,
+                    parent: None,
+                    components: SceneMap::new(),
+                    extras: SceneMap::new(),
+                },
+                SceneEntity {
+                    name: "marker".into(),
+                    tags: Vec::new(),
+                    mesh: SceneMesh::Cube,
+                    material: SceneMaterial {
+                        color: Color::WHITE,
+                        roughness: 0.5,
+                        metallic: 0.0,
+                        texture: None,
+                    },
+                    at: vec3(1.0, 0.0, 0.0),
+                    rotation: Quat::IDENTITY,
+                    scale: Vec3::ONE,
+                    parent: Some("hazard".into()),
+                    components: SceneMap::new(),
+                    extras: SceneMap::new(),
+                },
+            ],
+        };
+        let json = prefab.to_json().expect("serialize prefab");
+        let loaded = Prefab::from_json(&json).expect("deserialize prefab");
+        assert_eq!(loaded, prefab);
+
+        let mut scene = Scene::default();
+        scene.entities.push(SceneEntity {
+            name: "hazard".into(),
+            tags: Vec::new(),
+            mesh: SceneMesh::Cube,
+            material: SceneMaterial {
+                color: Color::WHITE,
+                roughness: 0.5,
+                metallic: 0.0,
+                texture: None,
+            },
+            at: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+            parent: None,
+            components: SceneMap::new(),
+            extras: SceneMap::new(),
+        });
+        let idxs = prefab.instantiate(&mut scene, vec3(2.0, 0.0, 0.0));
+        assert_eq!(idxs.len(), 2);
+        assert_eq!(scene.entities.len(), 3);
+        assert_eq!(scene.entities[1].name, "hazard_2");
+        assert_eq!(scene.entities[2].parent.as_deref(), Some("hazard_2"));
+        assert_eq!(scene.entities[1].at, vec3(2.0, 0.45, 0.0));
     }
 }

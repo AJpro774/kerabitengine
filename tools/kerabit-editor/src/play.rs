@@ -1,8 +1,9 @@
 //! Play mode via the public Kerabit API (`Scene` → `Kerabit::run`).
 //!
 //! Invoked as `kerabit-editor --play <path.kerabit.json>` so the editor shell
-//! (eframe) and the play window (winit) never share one event loop. Escape or
-//! closing the window returns control to the parent editor process.
+//! (eframe) and the play window (winit) never share one event loop — true
+//! in-viewport play is not feasible without merging event loops. Escape or
+//! closing the window exits this process; the parent editor restores selection.
 
 use std::path::Path;
 
@@ -96,7 +97,7 @@ pub fn run(path: &Path) {
             16.0,
             18.0,
             Color::WHITE,
-            "Playing — Esc or close window to stop",
+            "Playing — Esc / close to return (selection kept in editor)",
         );
     });
 }

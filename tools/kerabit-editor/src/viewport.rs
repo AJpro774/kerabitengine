@@ -12,6 +12,8 @@ use kerabit_render::{
 
 use crate::gizmo::{self, GizmoEdit, GizmoMode, GizmoState};
 use crate::orbit::OrbitCamera;
+use crate::selection::Selection;
+use crate::undo::UndoStack;
 
 /// Shared GPU resources living in egui-wgpu `callback_resources`.
 pub struct ViewportGpu {
@@ -105,6 +107,8 @@ pub struct Viewport {
     pub gizmo: GizmoState,
     frame: Arc<Mutex<ViewportFrame>>,
     place_cube: bool,
+    /// Snapshot of snap settings last applied from the toolbar (for persistence).
+    pub snap_dirty: bool,
 }
 
 impl Viewport {
@@ -122,7 +126,13 @@ impl Viewport {
                 draws: Vec::new(),
             })),
             place_cube: false,
+            snap_dirty: false,
         }
+    }
+
+    pub fn apply_snap_settings(&mut self, enabled: bool, size: f32) {
+        self.gizmo.snap = enabled;
+        self.gizmo.snap_size = size.max(0.05);
     }
 
     fn ui_toolbar(&mut self, ui: &mut Ui) {
@@ -132,21 +142,33 @@ impl Viewport {
                 ui.selectable_value(&mut self.gizmo.mode, mode, mode.label());
             }
             ui.separator();
-            ui.checkbox(&mut self.gizmo.snap, "Snap 0.5");
+            let prev_snap = self.gizmo.snap;
+            let prev_size = self.gizmo.snap_size;
+            ui.checkbox(&mut self.gizmo.snap, "Snap");
+            ui.add(
+                egui::DragValue::new(&mut self.gizmo.snap_size)
+                    .speed(0.05)
+                    .range(0.05..=10.0)
+                    .prefix("size "),
+            );
+            if self.gizmo.snap != prev_snap || (self.gizmo.snap_size - prev_size).abs() > 1e-6 {
+                self.snap_dirty = true;
+            }
             ui.separator();
             ui.checkbox(&mut self.place_cube, "Place cube (click)");
             ui.separator();
-            ui.weak("RMB orbit · MMB pan · scroll zoom · LMB pick");
+            ui.weak("RMB orbit · MMB pan · scroll zoom · LMB pick · Shift+LMB multi");
         });
     }
 
-    /// Central panel: render + interact. Mutates `scene` / `selected`.
+    /// Central panel: render + interact. Mutates `scene` / `selection`.
     pub fn show(
         &mut self,
         ui: &mut Ui,
         scene: &mut Scene,
-        selected: &mut Option<usize>,
+        selection: &mut Selection,
         scene_dir: Option<&Path>,
+        undo: &mut UndoStack,
         mark_dirty: &mut dyn FnMut(),
         status: &mut String,
     ) {
@@ -183,26 +205,48 @@ impl Viewport {
                 }
             }
 
-            if let Some(i) = *selected {
+            let multi = ui.input(|i| i.modifiers.shift || i.modifiers.command);
+
+            if let Some(i) = selection.primary() {
                 if i < scene.entities.len() {
                     let mut edit = GizmoEdit {
                         at: scene.entities[i].at,
                         rotation: scene.entities[i].rotation,
                         scale: scene.entities[i].scale,
                     };
+                    let was_dragging = self.gizmo.is_dragging();
                     if gizmo::interact(ui, rect, &response, &self.orbit, &mut self.gizmo, &mut edit)
                     {
+                        if self.gizmo.drag_began_this_frame {
+                            undo.push(scene);
+                        }
+                        let delta = edit.at - scene.entities[i].at;
                         scene.entities[i].at = edit.at;
                         scene.entities[i].rotation = edit.rotation;
                         scene.entities[i].scale = edit.scale;
+                        // Translate multi-selection together.
+                        if self.gizmo.mode == GizmoMode::Translate
+                            && selection.len() > 1
+                            && delta.length_squared() > 0.0
+                        {
+                            for &j in selection.as_slice() {
+                                if j != i && j < scene.entities.len() {
+                                    scene.entities[j].at += delta;
+                                }
+                            }
+                        }
                         mark_dirty();
+                    }
+                    if was_dragging && !self.gizmo.is_dragging() {
+                        undo.end_gesture();
                     }
                 }
             }
 
             if response.clicked_by(egui::PointerButton::Primary) && !self.gizmo.is_dragging() {
                 if let Some(pointer) = response.interact_pointer_pos() {
-                    let on_gizmo = selected
+                    let on_gizmo = selection
+                        .primary()
                         .and_then(|i| scene.entities.get(i))
                         .map(|e| {
                             gizmo::pointer_on_handle(
@@ -222,13 +266,11 @@ impl Viewport {
                         let ray = gizmo::picking_ray(&self.orbit, rect, pointer);
                         if self.place_cube {
                             if let Some(hit) = kerabit_render::ray_plane_y(ray, 0.5) {
+                                undo.push(scene);
                                 let mut at = hit;
                                 if self.gizmo.snap {
-                                    at = Vec3::new(
-                                        (at.x / 0.5).round() * 0.5,
-                                        0.5,
-                                        (at.z / 0.5).round() * 0.5,
-                                    );
+                                    at = gizmo::snap_position(at, self.gizmo.snap_size);
+                                    at.y = 0.5;
                                 } else {
                                     at.y = 0.5;
                                 }
@@ -240,14 +282,17 @@ impl Viewport {
                                     material: kerabit::SceneMaterial {
                                         color: Color::ORANGE,
                                         roughness: 0.5,
+                                        metallic: 0.0,
                                         texture: None,
                                     },
                                     at,
                                     rotation: Quat::IDENTITY,
                                     scale: Vec3::ONE,
                                     parent: None,
+                                    components: Default::default(),
+                                    extras: Default::default(),
                                 });
-                                *selected = Some(scene.entities.len() - 1);
+                                selection.set_one(scene.entities.len() - 1);
                                 self.place_cube = false;
                                 mark_dirty();
                                 *status = "Placed cube".into();
@@ -262,10 +307,19 @@ impl Viewport {
                                 candidates.push((idx, world));
                             }
                             if let Some((idx, _)) = pick_closest(ray, &candidates, 1_000.0) {
-                                *selected = Some(idx);
-                                *status = format!("Selected \"{}\"", scene.entities[idx].name);
-                            } else {
-                                *selected = None;
+                                if multi {
+                                    selection.toggle(idx);
+                                } else {
+                                    selection.set_one(idx);
+                                }
+                                let n = selection.len();
+                                *status = if n > 1 {
+                                    format!("Selected {n} entities")
+                                } else {
+                                    format!("Selected \"{}\"", scene.entities[idx].name)
+                                };
+                            } else if !multi {
+                                selection.clear();
                             }
                         }
                     }
@@ -298,7 +352,7 @@ impl Viewport {
             ));
 
             // Gizmos must paint after the blit callback so handles stay visible.
-            if let Some(i) = *selected {
+            if let Some(i) = selection.primary() {
                 if let Some(e) = scene.entities.get(i) {
                     gizmo::paint(
                         ui,
@@ -313,8 +367,51 @@ impl Viewport {
                     );
                 }
             }
+
+            // Selection markers for multi-select (small rings at entity origins).
+            if selection.len() > 1 {
+                let mut cam = self.orbit.to_camera();
+                cam.set_aspect(rect.width() / rect.height().max(1.0));
+                let painter = ui.painter_at(rect);
+                for &i in selection.as_slice() {
+                    if let Some(e) = scene.entities.get(i) {
+                        if let Some(p) = project_point(e.at, &cam, rect) {
+                            let primary = selection.primary() == Some(i);
+                            let color = if primary {
+                                egui::Color32::from_rgb(255, 220, 80)
+                            } else {
+                                egui::Color32::from_rgb(120, 180, 255)
+                            };
+                            painter.circle_stroke(
+                                p,
+                                if primary { 7.0 } else { 5.0 },
+                                egui::Stroke::new(1.5_f32, color),
+                            );
+                        }
+                    }
+                }
+            }
         });
     }
+}
+
+fn project_point(
+    world: Vec3,
+    cam: &kerabit_render::Camera,
+    rect: egui::Rect,
+) -> Option<egui::Pos2> {
+    let clip = cam.view_proj() * world.extend(1.0);
+    if clip.w <= 1e-5 {
+        return None;
+    }
+    let ndc = clip.truncate() / clip.w;
+    if !ndc.x.is_finite() || !ndc.y.is_finite() {
+        return None;
+    }
+    Some(egui::Pos2::new(
+        rect.center().x + ndc.x * rect.width() * 0.5,
+        rect.center().y - ndc.y * rect.height() * 0.5,
+    ))
 }
 
 impl egui_wgpu::CallbackTrait for ViewportPaint {
@@ -353,6 +450,7 @@ impl egui_wgpu::CallbackTrait for ViewportPaint {
 
         let mut camera = frame.camera.clone();
         gpu.renderer.encode_lit(
+            device,
             queue,
             encoder,
             &mut camera,

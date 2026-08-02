@@ -7,7 +7,7 @@ use kerabit_audio::AudioEngine;
 use kerabit_color::Color;
 use kerabit_input::InputState;
 use kerabit_physics::PhysicsWorld;
-use kerabit_render::{Camera, GpuState, Light};
+use kerabit_render::{clamp_lights, Camera, GpuState, Light, ParticleBurst};
 use kerabit_world::{EntityId, World};
 
 use crate::engine::{spawn_entities, Renderable};
@@ -27,7 +27,7 @@ pub struct Context<'a> {
     pub(crate) quit: &'a mut bool,
     pub(crate) gpu: Option<&'a mut GpuState>,
     pub(crate) renderables: &'a mut HashMap<EntityId, Renderable>,
-    pub(crate) light: &'a mut Light,
+    pub(crate) lights: &'a mut Vec<Light>,
     pub(crate) ambient: &'a mut Color,
     pub(crate) clear_color: &'a mut Color,
 }
@@ -72,16 +72,58 @@ impl Context<'_> {
         self.camera
     }
 
+    /// Active lights (max [`MAX_LIGHTS`]). Soft shadows use the first directional.
+    #[inline]
+    pub fn lights(&self) -> &[Light] {
+        self.lights
+    }
+
+    /// Replace lights (truncated to [`MAX_LIGHTS`]). Empty list restores a default sun.
+    pub fn set_lights(&mut self, lights: impl IntoIterator<Item = Light>) {
+        *self.lights = clamp_lights(&lights.into_iter().collect::<Vec<_>>());
+        if self.lights.is_empty() {
+            *self.lights = vec![Light::sun(kerabit_math::vec3(-0.35, -1.0, -0.25)).intensity(1.2)];
+        }
+    }
+
+    /// Primary light (slot 0). Prefer [`Self::lights`] / [`Self::set_lights`] for multi-light.
+    #[inline]
+    pub fn light_mut(&mut self) -> &mut Light {
+        if self.lights.is_empty() {
+            self.lights
+                .push(Light::sun(kerabit_math::vec3(-0.35, -1.0, -0.25)).intensity(1.2));
+        }
+        &mut self.lights[0]
+    }
+
+    /// Emit a simple particle billboard burst (CPU sim, GPU quads).
+    pub fn spawn_particles(&mut self, burst: ParticleBurst) {
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.spawn_particles(burst);
+        }
+    }
+
     /// Static colliders + kinematic queries (AABB / ray / sphere cast).
     #[inline]
     pub fn physics(&mut self) -> &mut PhysicsWorld {
         self.physics
     }
 
-    /// Sound playback (play by path, volume, loop).
+    /// Sound playback (play by path, volume, loop, spatial, buses).
     #[inline]
     pub fn audio(&mut self) -> &mut AudioEngine {
         self.audio
+    }
+
+    /// Point the audio listener at the active camera (stereo positional SFX).
+    ///
+    /// Call once per frame when using [`AudioEngine::play_at`] /
+    /// [`AudioEngine::play_at_with`].
+    pub fn sync_audio_listener(&mut self) {
+        let eye = self.camera.eye;
+        let target = self.camera.target;
+        let up = self.camera.up;
+        self.audio.follow_look_at(eye, target, up);
     }
 
     /// Immediate-mode screen overlay (text + rect). Cleared each frame.
@@ -107,6 +149,9 @@ impl Context<'_> {
         self.world.clear();
         self.renderables.clear();
         self.physics.clear();
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.clear_particles();
+        }
     }
 
     /// Despawn a named entity and drop its GPU draw entry.
@@ -145,14 +190,14 @@ impl Context<'_> {
     ///
     /// Physics colliders are cleared; the game must re-register statics
     /// (e.g. wall AABBs) after this call. Window aspect is preserved on the
-    /// new camera.
+    /// new camera. Scene JSON still authors a single sun (slot 0).
     pub fn apply_scene(&mut self, scene: &Scene) -> Result<(), SceneError> {
         let entities = scene.build_entities()?;
         self.clear_world();
 
         *self.clear_color = scene.clear_color;
         *self.ambient = scene.ambient;
-        *self.light = scene.to_light();
+        *self.lights = vec![scene.to_light()];
         let aspect = self.gpu.as_ref().map(|g| g.aspect()).unwrap_or(16.0 / 9.0);
         *self.camera = scene.to_camera();
         self.camera.set_aspect(aspect);

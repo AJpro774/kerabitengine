@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "clear_color": [0.04, 0.05, 0.1],
+  "ambient": [0.08, 0.09, 0.16],
+  "camera": {
+    "fov_y": 54.0,
+    "eye": [0.0, 13.0, 16.0],
+    "target": [0.0, 0.4, 0.0],
+    "near": 0.1,
+    "far": 100.0
+  },
+  "light": {
+    "direction": [0.5, -1.0, 0.2],
+    "intensity": 1.45,
+    "color": [0.92, 0.95, 1.0]
+  },
+  "entities": [
+    {
+      "name": "ground",
+      "tags": ["ground"],
+      "mesh": { "type": "plane", "size": 18.0 },
+      "material": { "color": [0.1, 0.12, 0.2], "roughness": 0.94 },
+      "at": [0.0, 0.0, 0.0]
+    },
+    {
+      "name": "player",
+      "tags": ["player"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.7, 0.85, 1.0], "roughness": 0.25 },
+      "at": [0.0, 0.5, 0.0]
+    },
+    {
+      "name": "hub_n",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.22, 0.25, 0.38], "roughness": 0.6 },
+      "at": [0.0, 0.7, -6.5],
+      "scale": [2.0, 1.4, 1.2]
+    },
+    {
+      "name": "hub_s",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.22, 0.25, 0.38], "roughness": 0.6 },
+      "at": [0.0, 0.7, 6.5],
+      "scale": [2.0, 1.4, 1.2]
+    },
+    {
+      "name": "rim_n",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.2, 0.22, 0.34], "roughness": 0.75 },
+      "at": [0.0, 0.55, -8.5],
+      "scale": [17.0, 1.1, 0.45]
+    },
+    {
+      "name": "rim_s",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.2, 0.22, 0.34], "roughness": 0.75 },
+      "at": [0.0, 0.55, 8.5],
+      "scale": [17.0, 1.1, 0.45]
+    },
+    {
+      "name": "rim_w",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.2, 0.22, 0.34], "roughness": 0.75 },
+      "at": [-8.5, 0.55, 0.0],
+      "scale": [0.45, 1.1, 16.5]
+    },
+    {
+      "name": "rim_e",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.2, 0.22, 0.34], "roughness": 0.75 },
+      "at": [8.5, 0.55, 0.0],
+      "scale": [0.45, 1.1, 16.5]
+    },
+    {
+      "name": "ring_a",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [1.0, 0.2, 0.3], "roughness": 0.48 },
+      "at": [2.4, 0.45, 0.0],
+      "scale": [0.95, 0.9, 0.95]
+    },
+    {
+      "name": "ring_b",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.95, 0.15, 0.4], "roughness": 0.48 },
+      "at": [4.0, 0.45, 0.0],
+      "scale": [1.05, 0.9, 1.05]
+    },
+    {
+      "name": "ring_c",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.9, 0.12, 0.5], "roughness": 0.48 },
+      "at": [5.6, 0.45, 0.0],
+      "scale": [1.1, 0.9, 1.1]
+    },
+    {
+      "name": "ring_d",
+      "tags": ["hazard", "orbit"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.85, 0.2, 0.55], "roughness": 0.48 },
+      "at": [0.0, 0.45, 7.0],
+      "scale": [1.15, 0.9, 1.15]
+    },
+    {
+      "name": "slash_x",
+      "tags": ["hazard", "slide_x"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.95, 0.35, 0.2], "roughness": 0.52 },
+      "at": [0.0, 0.4, -3.5],
+      "scale": [1.4, 0.8, 0.85]
+    },
+    {
+      "name": "slash_z",
+      "tags": ["hazard", "slide_z"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.9, 0.3, 0.25], "roughness": 0.52 },
+      "at": [-3.5, 0.4, 0.0],
+      "scale": [0.85, 0.8, 1.4]
+    }
+  ]
+}

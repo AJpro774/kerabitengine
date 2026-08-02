@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Editor guide — Kerabit</title>
+    <meta
+      name="description"
+      content="Kerabit editor: viewport, gizmos, Play, undo/redo, multi-select, prefabs, and Reach authoring."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/getting-started">Start</a>
+        <a href="/docs/api-tour">API tour</a>
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="docs">
+      <nav class="docs-crumb">
+        <a href="/docs/">Docs</a> / Editor guide
+      </nav>
+      <h1>Editor guide</h1>
+      <p class="docs-lede">
+        <code>kerabit-editor</code> is the level tool for Reach, Surge, and your
+        own <code>.kerabit.json</code> scenes. It is a <strong>dev tool</strong>
+        — not bundled inside player zips.
+      </p>
+
+      <h2>Launch</h2>
+      <pre class="code"><code>cargo run -p kerabit-editor</code></pre>
+      <p>
+        File → Open a scene under <code>games/*/levels/</code>. Settings (gizmo
+        snap, etc.) persist to <code>~/.kerabit/editor.json</code> (Windows:
+        <code>%LOCALAPPDATA%/Kerabit/</code>).
+      </p>
+
+      <h2>Viewport</h2>
+      <ul class="docs-list">
+        <li><strong>Orbit</strong> — right mouse drag</li>
+        <li><strong>Pan</strong> — middle mouse drag</li>
+        <li><strong>Zoom</strong> — scroll wheel</li>
+        <li><strong>Select</strong> — click an entity; <kbd>Shift+click</kbd> multi-select</li>
+        <li><strong>Gizmos</strong> — <kbd>W</kbd> move · <kbd>E</kbd> rotate · <kbd>R</kbd> scale</li>
+        <li><strong>Place cube</strong> — toolbar, then click the ground plane</li>
+      </ul>
+
+      <h2>Edit tools</h2>
+      <ul class="docs-list">
+        <li>
+          <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> — undo / redo for scene
+          mutations
+        </li>
+        <li>Edit → Duplicate selected</li>
+        <li>Edit → Align X / Y / Z (needs 2+ selection; aligns to primary)</li>
+        <li>
+          File → Save Prefab / Instance Prefab —
+          <code>.kerabit.prefab.json</code> (samples in
+          <code>games/reach/prefabs/</code>)
+        </li>
+        <li>File → Save writes <code>.kerabit.json</code></li>
+      </ul>
+
+      <h2>Play</h2>
+      <p>
+        Toolbar <strong>Play</strong> runs the open scene in a child window.
+        Dirty scenes use a temp snapshot so you do not have to save first.
+        Escape (or Stop) returns to edit with selection restored.
+      </p>
+
+      <h2>Authoring Reach</h2>
+      <p>
+        Levels live in <code>games/reach/levels/</code> and must be registered in
+        <code>games/reach/src/main.rs</code> (<code>LEVEL_FILES</code> +
+        <code>CHAPTERS</code>). Role tags:
+      </p>
+      <ul class="docs-list">
+        <li><code>player</code>, <code>goal</code>, <code>ground</code>, <code>wall</code>, <code>hazard</code></li>
+        <li>Keep unit-cube players (<code>half = 0.5</code>)</li>
+        <li>Leave dodge gaps ≥ <strong>1.0</strong></li>
+      </ul>
+      <p>
+        Best times: <code>~/.kerabit/reach_progress.txt</code>. Full ownership
+        notes: repo
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
+      </p>
+
+      <p class="docs-foot-links">
+        Back: <a href="/docs/getting-started">Getting Started</a> ·
+        <a href="/docs/api-tour">API tour</a>
+      </p>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="/docs/">All docs</a>
+    </footer>
+  </body>
+</html>

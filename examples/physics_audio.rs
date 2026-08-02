@@ -1,7 +1,7 @@
-//! Physics + audio smoke demo (P6).
+//! Physics + audio smoke demo (P6 / M3).
 //!
 //! WASD moves the green player cube; walking into the orange wall blocks.
-//! Press Space to play a short beep. Escape quits.
+//! Press Space to play a short beep at the player (spatial). Escape quits.
 //!
 //! ```bash
 //! cargo run -p kerabit --example physics_audio
@@ -46,6 +46,8 @@ fn main() {
         .light(Light::sun(vec3(-0.35, -1.0, -0.25)).intensity(1.2))
         .ambient(Color::rgb(0.15, 0.16, 0.18))
         .run(move |ctx| {
+            ctx.sync_audio_listener();
+
             if ctx.input().key_pressed(Key::Escape) {
                 ctx.quit();
                 return;
@@ -63,7 +65,7 @@ fn main() {
 
             if ctx.input().key_pressed(Key::Space) {
                 let path = beep_path();
-                if let Err(err) = ctx.audio().play(&path) {
+                if let Err(err) = ctx.audio().play_at(&path, player_pos) {
                     eprintln!("kerabit audio: {err}");
                 }
             }

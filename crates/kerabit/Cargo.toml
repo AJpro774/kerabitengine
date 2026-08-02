@@ -14,12 +14,18 @@ kerabit-input = { workspace = true }
 kerabit-render = { workspace = true }
 kerabit-assets = { workspace = true }
 kerabit-physics = { workspace = true }
+kerabit-anim = { workspace = true }
 kerabit-audio = { workspace = true }
+image = { workspace = true }
 anyhow = { workspace = true }
 winit = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[[example]]
+name = "hello"
+path = "../../examples/hello.rs"
 
 [[example]]
 name = "playground"
@@ -38,8 +44,16 @@ name = "physics_audio"
 path = "../../examples/physics_audio.rs"
 
 [[example]]
+name = "physics_sandbox"
+path = "../../examples/physics_sandbox.rs"
+
+[[example]]
 name = "mini_game"
 path = "../../examples/mini_game.rs"
+
+[[example]]
+name = "pbr_room"
+path = "../../examples/pbr_room.rs"
 
 [lints]
 workspace = true

@@ -5,10 +5,13 @@ use std::process::{Child, Command};
 
 use egui::{Color32, RichText, Ui};
 use kerabit::{
-    Color, Quat, Scene, SceneCamera, SceneEntity, SceneLight, SceneMaterial, SceneMesh, Vec3,
+    Color, Prefab, Quat, Scene, SceneCamera, SceneEntity, SceneLight, SceneMaterial, SceneMesh,
+    Vec3,
 };
-use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 
+use crate::selection::Selection;
+use crate::settings::EditorSettings;
+use crate::undo::UndoStack;
 use crate::validation;
 use crate::viewport::Viewport;
 
@@ -41,35 +44,83 @@ impl MeshKind {
     }
 }
 
+#[derive(Clone, Copy)]
+enum AlignAxis {
+    X,
+    Y,
+    Z,
+}
+
 /// In-memory editor document: a [`Scene`] plus path / dirty / selection.
 pub struct EditorApp {
     scene: Scene,
     path: Option<PathBuf>,
     dirty: bool,
-    selected: Option<usize>,
+    selection: Selection,
     status: String,
     rename_buf: String,
     viewport: Viewport,
+    undo: UndoStack,
+    settings: EditorSettings,
     /// Child `kerabit-editor --play <path>` process while play mode is active.
     play_child: Option<Child>,
+    /// Selection names captured when Play starts (restored on return).
+    play_selection_names: Vec<String>,
+    /// Temp scene path used for dirty/unsaved Play (deleted when play ends).
+    play_temp_path: Option<PathBuf>,
 }
 
 impl EditorApp {
     pub fn new() -> Self {
+        let settings = EditorSettings::load();
+        let mut viewport = Viewport::new();
+        viewport.apply_snap_settings(settings.snap_enabled, settings.snap_size);
         Self {
             scene: Scene::default(),
             path: None,
             dirty: false,
-            selected: None,
+            selection: Selection::default(),
             status: "New scene".into(),
             rename_buf: String::new(),
-            viewport: Viewport::new(),
+            viewport,
+            undo: UndoStack::new(),
+            settings,
             play_child: None,
+            play_selection_names: Vec::new(),
+            play_temp_path: None,
         }
     }
 
     fn is_playing(&self) -> bool {
         self.play_child.is_some()
+    }
+
+    fn sync_rename_buf(&mut self) {
+        self.rename_buf = self
+            .selection
+            .primary()
+            .and_then(|i| self.scene.entities.get(i))
+            .map(|e| e.name.clone())
+            .unwrap_or_default();
+    }
+
+    fn persist_snap_if_needed(&mut self) {
+        if !self.viewport.snap_dirty {
+            return;
+        }
+        self.viewport.snap_dirty = false;
+        self.settings.snap_enabled = self.viewport.gizmo.snap;
+        self.settings.snap_size = self.viewport.gizmo.snap_size;
+        self.settings.save();
+        self.status = format!(
+            "Snap {} (size {:.2}) saved",
+            if self.settings.snap_enabled {
+                "on"
+            } else {
+                "off"
+            },
+            self.settings.snap_size
+        );
     }
 
     /// Poll the play child; clear state when it exits (Escape / window close).
@@ -80,89 +131,108 @@ impl EditorApp {
         match child.try_wait() {
             Ok(Some(status)) => {
                 self.play_child = None;
-                self.status = if status.success() {
-                    "Play stopped — back to edit".into()
-                } else {
-                    format!("Play exited ({status})")
-                };
+                self.finish_play(status.success(), Some(status.to_string()));
             }
             Ok(None) => {}
             Err(err) => {
                 self.play_child = None;
-                self.status = format!("Play wait failed: {err}");
+                self.finish_play(false, Some(format!("wait failed: {err}")));
             }
         }
+    }
+
+    fn finish_play(&mut self, success: bool, detail: Option<String>) {
+        if let Some(temp) = self.play_temp_path.take() {
+            let _ = std::fs::remove_file(&temp);
+        }
+        let names = std::mem::take(&mut self.play_selection_names);
+        self.selection
+            .restore_by_names(&names, &self.scene.entities);
+        self.sync_rename_buf();
+        self.status = if success {
+            if names.is_empty() {
+                "Play stopped — back to edit".into()
+            } else {
+                format!(
+                    "Play stopped — selection restored ({} entit{})",
+                    names.len(),
+                    if names.len() == 1 { "y" } else { "ies" }
+                )
+            }
+        } else {
+            format!(
+                "Play exited ({})",
+                detail.unwrap_or_else(|| "error".into())
+            )
+        };
     }
 
     fn stop_play(&mut self) {
         if let Some(mut child) = self.play_child.take() {
             let _ = child.kill();
             let _ = child.wait();
-            self.status = "Play stopped — back to edit".into();
+            self.finish_play(true, None);
         }
     }
 
-    /// Ensure the scene is saved, then launch play via the same binary (`--play`).
+    /// Launch play via child process. Dirty/unsaved scenes use a temp file so
+    /// selection and edit state stay intact in this window (eframe + winit
+    /// cannot share one event loop for true in-viewport play).
     fn play_scene(&mut self) {
         if self.is_playing() {
             self.status = "Already playing — Stop first".into();
             return;
         }
 
-        if self.dirty {
-            let result = MessageDialog::new()
-                .set_level(MessageLevel::Warning)
-                .set_title("Save before Play?")
-                .set_description(
-                    "The scene has unsaved changes. Save before playing?",
-                )
-                .set_buttons(MessageButtons::OkCancel)
-                .show();
-            match result {
-                MessageDialogResult::Ok => {
-                    self.save_scene();
-                    if self.dirty {
-                        // Save As cancelled or save failed.
-                        self.status = "Play cancelled — save the scene first".into();
-                        return;
-                    }
-                }
-                _ => {
-                    self.status = "Play cancelled".into();
-                    return;
-                }
-            }
-        }
+        self.play_selection_names = self.selection.names(&self.scene.entities);
 
-        if self.path.is_none() {
-            self.save_scene_as();
-            if self.path.is_none() || self.dirty {
-                self.status = "Play cancelled — save the scene first".into();
+        let play_path = if self.dirty || self.path.is_none() {
+            let temp = std::env::temp_dir().join(format!(
+                "kerabit-play-{}-{}.kerabit.json",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0)
+            ));
+            if let Err(err) = self.scene.save(&temp) {
+                self.status = format!("Play failed: write temp: {err}");
                 return;
             }
-        }
-
-        let Some(path) = self.path.clone() else {
-            return;
+            self.play_temp_path = Some(temp.clone());
+            temp
+        } else {
+            self.play_temp_path = None;
+            self.path.clone().expect("path checked")
         };
 
         let exe = match std::env::current_exe() {
             Ok(e) => e,
             Err(err) => {
                 self.status = format!("Play failed: current_exe: {err}");
+                if let Some(temp) = self.play_temp_path.take() {
+                    let _ = std::fs::remove_file(temp);
+                }
                 return;
             }
         };
 
-        match Command::new(&exe).arg("--play").arg(&path).spawn() {
+        match Command::new(&exe).arg("--play").arg(&play_path).spawn() {
             Ok(child) => {
                 self.play_child = Some(child);
+                let hint = if self.dirty || self.path.is_none() {
+                    "unsaved snapshot"
+                } else {
+                    "saved scene"
+                };
                 self.status = format!(
-                    "Playing {} — Esc in play window or Stop to return",
-                    path.display()
+                    "Playing ({hint}) — Esc in play window or Stop; selection kept"
                 );
             }
             Err(err) => {
+                if let Some(temp) = self.play_temp_path.take() {
+                    let _ = std::fs::remove_file(temp);
+                }
                 self.status = format!("Play failed to launch: {err}");
             }
         }
@@ -170,6 +240,34 @@ impl EditorApp {
 
     fn mark_dirty(&mut self) {
         self.dirty = true;
+    }
+
+    fn push_undo(&mut self) {
+        self.undo.push(&self.scene);
+    }
+
+    fn push_undo_if_needed(&mut self) {
+        self.undo.push_if_needed(&self.scene);
+    }
+
+    fn do_undo(&mut self) {
+        if let Some(prev) = self.undo.undo(&self.scene) {
+            self.scene = prev;
+            self.selection.retain_valid(self.scene.entities.len());
+            self.sync_rename_buf();
+            self.mark_dirty();
+            self.status = "Undo".into();
+        }
+    }
+
+    fn do_redo(&mut self) {
+        if let Some(next) = self.undo.redo(&self.scene) {
+            self.scene = next;
+            self.selection.retain_valid(self.scene.entities.len());
+            self.sync_rename_buf();
+            self.mark_dirty();
+            self.status = "Redo".into();
+        }
     }
 
     fn scene_dir(&self) -> Option<&Path> {
@@ -188,10 +286,11 @@ impl EditorApp {
     }
 
     fn new_scene(&mut self) {
+        self.undo.clear();
         self.scene = Scene::default();
         self.path = None;
         self.dirty = false;
-        self.selected = None;
+        self.selection.clear();
         self.rename_buf.clear();
         self.status = "New scene".into();
     }
@@ -206,10 +305,11 @@ impl EditorApp {
         if let Some(path) = dialog.pick_file() {
             match Scene::load(&path) {
                 Ok(scene) => {
+                    self.undo.clear();
                     self.scene = scene;
                     self.path = Some(path.clone());
                     self.dirty = false;
-                    self.selected = None;
+                    self.selection.clear();
                     self.rename_buf.clear();
                     self.status = format!("Opened {}", path.display());
                 }
@@ -272,6 +372,7 @@ impl EditorApp {
     }
 
     fn add_entity(&mut self) {
+        self.push_undo();
         let name = self.unique_name("entity");
         self.scene.entities.push(SceneEntity {
             name,
@@ -280,69 +381,177 @@ impl EditorApp {
             material: SceneMaterial {
                 color: Color::ORANGE,
                 roughness: 0.5,
+                metallic: 0.0,
                 texture: None,
             },
             at: Vec3::ZERO,
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
             parent: None,
+            components: Default::default(),
+            extras: Default::default(),
         });
-        self.selected = Some(self.scene.entities.len() - 1);
-        if let Some(i) = self.selected {
-            self.rename_buf = self.scene.entities[i].name.clone();
-        }
+        self.selection.set_one(self.scene.entities.len() - 1);
+        self.sync_rename_buf();
         self.mark_dirty();
         self.status = "Added entity".into();
     }
 
     fn duplicate_selected(&mut self) {
-        let Some(i) = self.selected else {
+        if self.selection.is_empty() {
             return;
-        };
-        let Some(src) = self.scene.entities.get(i).cloned() else {
-            return;
-        };
-        let mut dup = src;
-        dup.name = self.unique_name(&format!("{}_copy", dup.name));
-        self.scene.entities.push(dup);
-        self.selected = Some(self.scene.entities.len() - 1);
-        if let Some(j) = self.selected {
-            self.rename_buf = self.scene.entities[j].name.clone();
         }
-        self.mark_dirty();
-        self.status = "Duplicated entity".into();
+        self.push_undo();
+        let indices: Vec<usize> = self.selection.as_slice().to_vec();
+        let mut new_indices = Vec::new();
+        for &i in &indices {
+            let Some(src) = self.scene.entities.get(i).cloned() else {
+                continue;
+            };
+            let mut dup = src;
+            dup.name = self.unique_name(&format!("{}_copy", dup.name));
+            // Offset slightly so copies are visible.
+            dup.at.x += 0.5;
+            self.scene.entities.push(dup);
+            new_indices.push(self.scene.entities.len() - 1);
+        }
+        if !new_indices.is_empty() {
+            self.selection.set_many(new_indices);
+            self.sync_rename_buf();
+            self.mark_dirty();
+            self.status = format!("Duplicated {} entit{}", indices.len(), if indices.len() == 1 { "y" } else { "ies" });
+        }
     }
 
     fn delete_selected(&mut self) {
-        let Some(i) = self.selected else {
-            return;
-        };
-        if i >= self.scene.entities.len() {
-            self.selected = None;
+        if self.selection.is_empty() {
             return;
         }
-        let removed = self.scene.entities.remove(i);
-        for e in &mut self.scene.entities {
-            if e.parent.as_deref() == Some(removed.name.as_str()) {
-                e.parent = None;
+        self.push_undo();
+        let to_remove = self.selection.sorted_desc();
+        let mut removed_names = Vec::new();
+        for i in to_remove {
+            if i >= self.scene.entities.len() {
+                continue;
+            }
+            let removed = self.scene.entities.remove(i);
+            removed_names.push(removed.name.clone());
+            for e in &mut self.scene.entities {
+                if e.parent.as_deref() == Some(removed.name.as_str()) {
+                    e.parent = None;
+                }
             }
         }
-        self.selected = None;
+        self.selection.clear();
         self.rename_buf.clear();
         self.mark_dirty();
-        self.status = format!("Deleted \"{}\"", removed.name);
+        self.status = format!("Deleted {}", removed_names.join(", "));
     }
 
-    fn select(&mut self, index: Option<usize>) {
-        self.selected = index;
-        self.rename_buf = index
-            .and_then(|i| self.scene.entities.get(i))
-            .map(|e| e.name.clone())
-            .unwrap_or_default();
+    fn align_selected(&mut self, axis: AlignAxis) {
+        let Some(primary) = self.selection.primary() else {
+            return;
+        };
+        if self.selection.len() < 2 {
+            self.status = "Align needs 2+ selected entities".into();
+            return;
+        }
+        let Some(ref_at) = self.scene.entities.get(primary).map(|e| e.at) else {
+            return;
+        };
+        self.push_undo();
+        for &i in self.selection.as_slice() {
+            if i == primary || i >= self.scene.entities.len() {
+                continue;
+            }
+            match axis {
+                AlignAxis::X => self.scene.entities[i].at.x = ref_at.x,
+                AlignAxis::Y => self.scene.entities[i].at.y = ref_at.y,
+                AlignAxis::Z => self.scene.entities[i].at.z = ref_at.z,
+            }
+        }
+        self.mark_dirty();
+        let axis_name = match axis {
+            AlignAxis::X => "X",
+            AlignAxis::Y => "Y",
+            AlignAxis::Z => "Z",
+        };
+        self.status = format!("Aligned to primary {axis_name}");
+    }
+
+    fn save_prefab(&mut self) {
+        if self.selection.is_empty() {
+            self.status = "Select entities to save as prefab".into();
+            return;
+        }
+        let prefab = self.scene.prefab_from_indices(self.selection.as_slice());
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Kerabit prefab", &["json"])
+            .set_file_name("untitled.kerabit.prefab.json")
+            .set_title("Save Prefab");
+        if let Some(dir) = default_prefabs_dir() {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.save_file() {
+            let path = ensure_prefab_ext(path);
+            match prefab.save(&path) {
+                Ok(()) => {
+                    self.status = format!(
+                        "Saved prefab ({} entit{}) → {}",
+                        prefab.entities.len(),
+                        if prefab.entities.len() == 1 { "y" } else { "ies" },
+                        path.display()
+                    );
+                }
+                Err(err) => {
+                    self.status = format!("Save prefab failed: {err}");
+                }
+            }
+        }
+    }
+
+    fn instance_prefab(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Kerabit prefab", &["json"])
+            .set_title("Instance Prefab");
+        if let Some(dir) = default_prefabs_dir() {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            match Prefab::load(&path) {
+                Ok(prefab) => {
+                    if prefab.entities.is_empty() {
+                        self.status = "Prefab has no entities".into();
+                        return;
+                    }
+                    self.push_undo();
+                    let offset = self
+                        .selection
+                        .primary()
+                        .and_then(|i| self.scene.entities.get(i))
+                        .map(|e| e.at + Vec3::new(1.0, 0.0, 0.0))
+                        .unwrap_or(Vec3::ZERO);
+                    let idxs = prefab.instantiate(&mut self.scene, offset);
+                    self.selection.set_many(idxs);
+                    self.sync_rename_buf();
+                    self.mark_dirty();
+                    self.status = format!(
+                        "Instanced {} from {}",
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("prefab"),
+                        path.display()
+                    );
+                }
+                Err(err) => {
+                    self.status = format!("Instance prefab failed: {err}");
+                }
+            }
+        }
     }
 
     fn apply_rename(&mut self) {
-        let Some(i) = self.selected else {
+        let Some(i) = self.selection.primary() else {
             return;
         };
         let new_name = self.rename_buf.trim().to_string();
@@ -364,6 +573,7 @@ impl EditorApp {
             self.status = format!("Rename failed: \"{new_name}\" already exists");
             return;
         }
+        self.push_undo();
         self.scene.entities[i].name = new_name.clone();
         for e in &mut self.scene.entities {
             if e.parent.as_deref() == Some(old_name.as_str()) {
@@ -405,15 +615,51 @@ impl EditorApp {
                     self.save_scene_as();
                     ui.close_menu();
                 }
+                ui.separator();
+                if ui
+                    .add_enabled(
+                        !self.selection.is_empty(),
+                        egui::Button::new("Save Prefab…"),
+                    )
+                    .clicked()
+                {
+                    self.save_prefab();
+                    ui.close_menu();
+                }
+                if ui.button("Instance Prefab…").clicked() {
+                    self.instance_prefab();
+                    ui.close_menu();
+                }
             });
             ui.menu_button("Edit", |ui| {
+                if ui
+                    .add_enabled(
+                        self.undo.can_undo(),
+                        egui::Button::new("Undo").shortcut_text("Ctrl+Z"),
+                    )
+                    .clicked()
+                {
+                    self.do_undo();
+                    ui.close_menu();
+                }
+                if ui
+                    .add_enabled(
+                        self.undo.can_redo(),
+                        egui::Button::new("Redo").shortcut_text("Ctrl+Shift+Z"),
+                    )
+                    .clicked()
+                {
+                    self.do_redo();
+                    ui.close_menu();
+                }
+                ui.separator();
                 if ui.button("Add Entity").clicked() {
                     self.add_entity();
                     ui.close_menu();
                 }
-                let has_sel = self.selected.is_some();
+                let has_sel = !self.selection.is_empty();
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Duplicate"))
+                    .add_enabled(has_sel, egui::Button::new("Duplicate").shortcut_text("Ctrl+D"))
                     .clicked()
                 {
                     self.duplicate_selected();
@@ -424,6 +670,30 @@ impl EditorApp {
                     .clicked()
                 {
                     self.delete_selected();
+                    ui.close_menu();
+                }
+                ui.separator();
+                ui.label(RichText::new("Align to primary").weak().small());
+                let can_align = self.selection.len() >= 2;
+                if ui
+                    .add_enabled(can_align, egui::Button::new("Align X"))
+                    .clicked()
+                {
+                    self.align_selected(AlignAxis::X);
+                    ui.close_menu();
+                }
+                if ui
+                    .add_enabled(can_align, egui::Button::new("Align Y"))
+                    .clicked()
+                {
+                    self.align_selected(AlignAxis::Y);
+                    ui.close_menu();
+                }
+                if ui
+                    .add_enabled(can_align, egui::Button::new("Align Z"))
+                    .clicked()
+                {
+                    self.align_selected(AlignAxis::Z);
                     ui.close_menu();
                 }
             });
@@ -451,14 +721,14 @@ impl EditorApp {
             let playing = self.is_playing();
             if ui
                 .add_enabled(!playing, egui::Button::new("▶ Play"))
-                .on_hover_text("Play current scene (Ctrl+P)")
+                .on_hover_text("Play current scene (Ctrl+P) — dirty scenes use a temp snapshot")
                 .clicked()
             {
                 self.play_scene();
             }
             if ui
                 .add_enabled(playing, egui::Button::new("■ Stop"))
-                .on_hover_text("Stop play and return to edit (Ctrl+.)")
+                .on_hover_text("Stop play and return to edit with selection intact (Ctrl+.)")
                 .clicked()
             {
                 self.stop_play();
@@ -473,22 +743,36 @@ impl EditorApp {
                 self.add_entity();
             }
             if ui
-                .add_enabled(self.selected.is_some(), egui::Button::new("Duplicate"))
+                .add_enabled(!self.selection.is_empty(), egui::Button::new("Duplicate"))
                 .clicked()
             {
                 self.duplicate_selected();
             }
             if ui
-                .add_enabled(self.selected.is_some(), egui::Button::new("Delete"))
+                .add_enabled(!self.selection.is_empty(), egui::Button::new("Delete"))
                 .clicked()
             {
                 self.delete_selected();
             }
         });
+        if self.selection.len() >= 2 {
+            ui.horizontal(|ui| {
+                ui.label("Align");
+                if ui.button("X").clicked() {
+                    self.align_selected(AlignAxis::X);
+                }
+                if ui.button("Y").clicked() {
+                    self.align_selected(AlignAxis::Y);
+                }
+                if ui.button("Z").clicked() {
+                    self.align_selected(AlignAxis::Z);
+                }
+            });
+        }
         ui.separator();
 
-        if self.selected.is_some() {
-            ui.label("Rename");
+        if self.selection.primary().is_some() {
+            ui.label("Rename (primary)");
             let resp = ui.text_edit_singleline(&mut self.rename_buf);
             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 self.apply_rename();
@@ -499,9 +783,13 @@ impl EditorApp {
         }
 
         ui.separator();
+        if self.selection.len() > 1 {
+            ui.label(format!("{} selected (Shift+click)", self.selection.len()));
+        }
         egui::ScrollArea::vertical().show(ui, |ui| {
             let count = self.scene.entities.len();
             let mut clicked = None;
+            let mut multi = false;
             for i in 0..count {
                 let name = self.scene.entities[i].name.clone();
                 let parent = self.scene.entities[i].parent.clone();
@@ -510,26 +798,45 @@ impl EditorApp {
                 } else {
                     name
                 };
-                let selected = self.selected == Some(i);
-                if ui.selectable_label(selected, label).clicked() {
+                let selected = self.selection.contains(i);
+                let resp = ui.selectable_label(selected, label);
+                if resp.clicked() {
                     clicked = Some(i);
+                    multi = ui.input(|inp| inp.modifiers.shift || inp.modifiers.command);
                 }
             }
             if let Some(i) = clicked {
-                self.select(Some(i));
+                self.undo.end_gesture();
+                if multi {
+                    self.selection.toggle(i);
+                } else {
+                    self.selection.set_one(i);
+                }
+                self.sync_rename_buf();
             }
         });
     }
 
     fn ui_inspector(&mut self, ui: &mut Ui) {
         ui.heading("Inspector");
-        let Some(i) = self.selected else {
+        let Some(i) = self.selection.primary() else {
             ui.label("Select an entity in the hierarchy.");
+            ui.label(RichText::new("Shift+click for multi-select.").weak().small());
             return;
         };
         if i >= self.scene.entities.len() {
-            self.selected = None;
+            self.selection.clear();
             return;
+        }
+
+        if self.selection.len() > 1 {
+            ui.label(
+                RichText::new(format!(
+                    "Editing primary of {} selected",
+                    self.selection.len()
+                ))
+                .weak(),
+            );
         }
 
         let mut at = [
@@ -557,6 +864,7 @@ impl EditorApp {
         };
         let mut color = color_to_rgb(self.scene.entities[i].material.color);
         let mut roughness = self.scene.entities[i].material.roughness;
+        let mut metallic = self.scene.entities[i].material.metallic;
         let mut texture = self.scene.entities[i]
             .material
             .texture
@@ -680,6 +988,14 @@ impl EditorApp {
                     .prefix("roughness "),
             )
             .changed();
+        dirty |= ui
+            .add(
+                egui::DragValue::new(&mut metallic)
+                    .speed(0.01)
+                    .range(0.0..=1.0)
+                    .prefix("metallic "),
+            )
+            .changed();
         ui.horizontal(|ui| {
             ui.label("Texture");
             dirty |= ui.text_edit_singleline(&mut texture).changed();
@@ -713,6 +1029,7 @@ impl EditorApp {
             });
 
         if dirty {
+            self.push_undo_if_needed();
             self.scene.entities[i].at = Vec3::new(at[0], at[1], at[2]);
             let mut q = Quat::from_xyzw(rot[0], rot[1], rot[2], rot[3]);
             if q.length_squared() > 1e-8 {
@@ -734,6 +1051,7 @@ impl EditorApp {
             };
             self.scene.entities[i].material.color = Color::rgb(color[0], color[1], color[2]);
             self.scene.entities[i].material.roughness = roughness;
+            self.scene.entities[i].material.metallic = metallic;
             self.scene.entities[i].material.texture = if texture.trim().is_empty() {
                 None
             } else {
@@ -742,6 +1060,13 @@ impl EditorApp {
             self.scene.entities[i].parent = parent;
             self.scene.entities[i].tags = tags;
             self.mark_dirty();
+        }
+
+        // End continuous-edit gesture when pointer is released.
+        if ui.input(|inp| {
+            inp.pointer.any_released() && !inp.pointer.any_down()
+        }) {
+            self.undo.end_gesture();
         }
     }
 
@@ -813,6 +1138,7 @@ impl EditorApp {
         dirty |= ui.color_edit_button_rgb(&mut light_color).changed();
 
         if dirty {
+            self.push_undo_if_needed();
             self.scene.clear_color = Color::rgb(clear[0], clear[1], clear[2]);
             self.scene.ambient = Color::rgb(ambient[0], ambient[1], ambient[2]);
             self.scene.camera = SceneCamera {
@@ -868,6 +1194,9 @@ impl EditorApp {
         let mut new = false;
         let mut play = false;
         let mut stop = false;
+        let mut undo = false;
+        let mut redo = false;
+        let mut duplicate = false;
         ctx.input(|i| {
             if i.modifiers.command && i.key_pressed(egui::Key::O) {
                 open = true;
@@ -885,6 +1214,17 @@ impl EditorApp {
             }
             if i.modifiers.command && i.key_pressed(egui::Key::Period) {
                 stop = true;
+            }
+            if i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z) {
+                redo = true;
+            } else if i.modifiers.command && i.key_pressed(egui::Key::Z) {
+                undo = true;
+            }
+            if i.modifiers.command && i.key_pressed(egui::Key::Y) {
+                redo = true;
+            }
+            if i.modifiers.command && i.key_pressed(egui::Key::D) {
+                duplicate = true;
             }
         });
         if open {
@@ -904,6 +1244,15 @@ impl EditorApp {
         if stop {
             self.stop_play();
         }
+        if undo {
+            self.do_undo();
+        }
+        if redo {
+            self.do_redo();
+        }
+        if duplicate {
+            self.duplicate_selected();
+        }
     }
 }
 
@@ -911,6 +1260,7 @@ impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_play_child();
         self.handle_shortcuts(ctx);
+        self.persist_snap_if_needed();
 
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title()));
 
@@ -943,25 +1293,23 @@ impl eframe::App for EditorApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let scene_dir = self.scene_dir().map(|p| p.to_path_buf());
-            let prev_selected = self.selected;
+            let prev_primary = self.selection.primary();
             let mut dirty_flag = false;
             self.viewport.show(
                 ui,
                 &mut self.scene,
-                &mut self.selected,
+                &mut self.selection,
                 scene_dir.as_deref(),
+                &mut self.undo,
                 &mut || dirty_flag = true,
                 &mut self.status,
             );
             if dirty_flag {
-                self.mark_dirty();
+                self.dirty = true;
             }
-            if self.selected != prev_selected {
-                self.rename_buf = self
-                    .selected
-                    .and_then(|i| self.scene.entities.get(i))
-                    .map(|e| e.name.clone())
-                    .unwrap_or_default();
+            if self.selection.primary() != prev_primary {
+                self.sync_rename_buf();
+                self.undo.end_gesture();
             }
         });
 
@@ -973,6 +1321,9 @@ impl eframe::App for EditorApp {
 
     fn on_exit(&mut self) {
         self.stop_play();
+        self.settings.snap_enabled = self.viewport.gizmo.snap;
+        self.settings.snap_size = self.viewport.gizmo.snap_size;
+        self.settings.save();
     }
 }
 
@@ -1005,6 +1356,31 @@ fn default_levels_dir() -> Option<PathBuf> {
     }
 }
 
+fn default_prefabs_dir() -> Option<PathBuf> {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let prefabs = manifest.join("../../games/reach/prefabs");
+    if prefabs.is_dir() {
+        Some(prefabs.canonicalize().unwrap_or(prefabs))
+    } else {
+        default_levels_dir()
+    }
+}
+
+fn ensure_prefab_ext(path: PathBuf) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("untitled.kerabit.prefab.json");
+    if name.ends_with(".kerabit.prefab.json") {
+        return path;
+    }
+    if name.ends_with(".json") {
+        let stem = name.trim_end_matches(".json");
+        return path.with_file_name(format!("{stem}.kerabit.prefab.json"));
+    }
+    path.with_extension("kerabit.prefab.json")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1024,5 +1400,14 @@ mod tests {
             errors.is_empty(),
             "intro level should validate clean: {errors:?}"
         );
+    }
+
+    #[test]
+    fn hazard_prefab_loads() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../games/reach/prefabs/hazard_block.kerabit.prefab.json");
+        let prefab = Prefab::load(&path).expect("load hazard prefab");
+        assert_eq!(prefab.entities.len(), 1);
+        assert!(prefab.entities[0].has_tag("hazard"));
     }
 }

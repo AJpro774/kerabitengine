@@ -1,26 +1,37 @@
-//! Surge — Kerabit score-attack arena.
+//! Surge — Kerabit score-attack arena (M6).
 //!
-//! Survive moving hazard waves for 60 seconds. Score ticks while alive;
-//! wave speed ramps every 15s. Two editor-authored arenas.
+//! Modes:
+//! - **Timed ranked** — survive 60s per arena; clear bonus + rank tier; cycle arenas
+//! - **Endless** — survive until you fall; waves keep ramping; best score tracked
 //!
-//! Public Kerabit API only (`ctx.ui()`, physics, `apply_scene`).
+//! Five editor-authored arenas under `levels/`.
 //!
 //! **Controls**
+//! - Title: ←/→ arena · 1/2 or ↑/↓ mode · Space start
 //! - WASD — move
-//! - Space — start / confirm / next arena
 //! - R — retry
-//! - Escape — quit
+//! - Escape — title / quit
 //!
 //! ```bash
 //! cargo run -p surge
 //! ```
 
+use std::fs;
 use std::path::PathBuf;
 
 use kerabit::prelude::*;
 use kerabit::{SceneEntity, SceneMesh};
 
-const LEVEL_FILES: &[&str] = &["01_pit.kerabit.json", "02_ring.kerabit.json"];
+const LEVEL_FILES: &[&str] = &[
+    "01_pit.kerabit.json",
+    "02_ring.kerabit.json",
+    "03_cross.kerabit.json",
+    "04_gauntlet.kerabit.json",
+    "05_vortex.kerabit.json",
+];
+
+const ARENA_NAMES: &[&str] = &["Pit", "Ring", "Cross", "Gauntlet", "Vortex"];
+
 const SURVIVE_SECS: f32 = 60.0;
 const WAVE_PERIOD: f32 = 15.0;
 
@@ -30,6 +41,28 @@ enum Phase {
     Playing,
     Survived,
     Failed,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GameMode {
+    Timed,
+    Endless,
+}
+
+impl GameMode {
+    fn label(self) -> &'static str {
+        match self {
+            GameMode::Timed => "Timed Ranked",
+            GameMode::Endless => "Endless",
+        }
+    }
+
+    fn blurb(self) -> &'static str {
+        match self {
+            GameMode::Timed => "Survive 60s · clear arenas · earn a rank",
+            GameMode::Endless => "No time limit · waves keep rising · beat your best",
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -45,9 +78,7 @@ struct Hazard {
     half: Vec3,
     base_scale: Vec3,
     motion: Motion,
-    /// Phase offset so hazards don't sync.
     phase: f32,
-    /// Orbit radius or slide amplitude (derived from rest).
     amplitude: f32,
 }
 
@@ -62,12 +93,87 @@ struct Arena {
     cam_height: f32,
 }
 
+struct BestScores {
+    timed: f32,
+    endless: f32,
+}
+
 fn root_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 fn level_path(index: usize) -> PathBuf {
     root_dir().join("levels").join(LEVEL_FILES[index])
+}
+
+fn asset_path(name: &str) -> PathBuf {
+    root_dir().join("assets").join(name)
+}
+
+fn progress_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("Kerabit"))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".kerabit"))
+    }
+}
+
+fn progress_path() -> PathBuf {
+    if let Some(base) = progress_dir() {
+        let _ = fs::create_dir_all(&base);
+        return base.join("surge_best.txt");
+    }
+    root_dir().join("surge_best.txt")
+}
+
+fn load_bests() -> BestScores {
+    let mut bests = BestScores {
+        timed: 0.0,
+        endless: 0.0,
+    };
+    let Ok(text) = fs::read_to_string(progress_path()) else {
+        return bests;
+    };
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        match (parts.next(), parts.next()) {
+            (Some("timed"), Some(v)) => bests.timed = v.parse().unwrap_or(0.0),
+            (Some("endless"), Some(v)) => bests.endless = v.parse().unwrap_or(0.0),
+            _ => {}
+        }
+    }
+    bests
+}
+
+fn save_bests(bests: &BestScores) {
+    let body = format!("timed {:.1}\nendless {:.1}\n", bests.timed, bests.endless);
+    if let Err(err) = fs::write(progress_path(), body) {
+        eprintln!("surge: failed to save bests: {err}");
+    }
+}
+
+fn rank_for_score(score: f32) -> &'static str {
+    if score >= 2200.0 {
+        "PLATINUM"
+    } else if score >= 1600.0 {
+        "GOLD"
+    } else if score >= 1000.0 {
+        "SILVER"
+    } else if score >= 500.0 {
+        "BRONZE"
+    } else {
+        "ROOKIE"
+    }
+}
+
+fn play_sfx_at(ctx: &mut Context<'_>, name: &str, position: Vec3) {
+    let path = asset_path(name);
+    if let Err(err) = ctx.audio().play_at(&path, position) {
+        eprintln!("surge audio: {err}");
+    }
 }
 
 fn text_width(s: &str, size: f32) -> f32 {
@@ -99,6 +205,38 @@ fn wave_index(elapsed: f32) -> u32 {
     (elapsed / WAVE_PERIOD).floor() as u32 + 1
 }
 
+fn load_arena_at(
+    ctx: &mut Context<'_>,
+    level_index: usize,
+    arena: &mut Arena,
+    player_pos: &mut Vec3,
+    cam_eye: &mut Vec3,
+    cam_target: &mut Vec3,
+    physics_ready: &mut bool,
+) -> bool {
+    let path = level_path(level_index);
+    let scene = match Scene::load(&path) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("surge: failed to load {}: {err}", path.display());
+            return false;
+        }
+    };
+    *arena = Arena::from_scene(&scene);
+    if let Err(err) = ctx.apply_scene(&scene) {
+        eprintln!("surge: apply_scene failed: {err}");
+        return false;
+    }
+    *player_pos = arena.player_start;
+    begin_camera(arena, *player_pos, cam_eye, cam_target);
+    register_walls(ctx, arena);
+    *physics_ready = true;
+    let cam = ctx.camera_mut();
+    cam.eye = *cam_eye;
+    cam.target = *cam_target;
+    true
+}
+
 fn advance_arena(
     ctx: &mut Context<'_>,
     level_index: &mut usize,
@@ -116,31 +254,22 @@ fn advance_arena(
     if next >= LEVEL_FILES.len() {
         return false;
     }
-    let path = level_path(next);
-    let scene = match Scene::load(&path) {
-        Ok(s) => s,
-        Err(err) => {
-            eprintln!("surge: failed to load {}: {err}", path.display());
-            return false;
-        }
-    };
-    *arena = Arena::from_scene(&scene);
-    if let Err(err) = ctx.apply_scene(&scene) {
-        eprintln!("surge: apply_scene failed: {err}");
+    if !load_arena_at(
+        ctx,
+        next,
+        arena,
+        player_pos,
+        cam_eye,
+        cam_target,
+        physics_ready,
+    ) {
         return false;
     }
     *level_index = next;
-    *player_pos = arena.player_start;
     *phase = Phase::Playing;
     *elapsed = 0.0;
     *score = 0.0;
     *flash = 0.0;
-    begin_camera(arena, *player_pos, cam_eye, cam_target);
-    register_walls(ctx, arena);
-    *physics_ready = true;
-    let cam = ctx.camera_mut();
-    cam.eye = *cam_eye;
-    cam.target = *cam_target;
     true
 }
 
@@ -155,10 +284,11 @@ fn main() {
     let mut level_index = 0usize;
     let mut player_pos = arena.player_start;
     let mut phase = Phase::Title;
+    let mut mode = GameMode::Timed;
     let mut physics_ready = false;
     let mut elapsed = 0.0f32;
     let mut score = 0.0f32;
-    let mut best_score = 0.0f32;
+    let mut bests = load_bests();
     let mut time_alive = 0.0f32;
     let mut flash = 0.0f32;
     let mut flash_color = Color::WHITE;
@@ -166,6 +296,7 @@ fn main() {
     let mut cam_target = Vec3::new(arena.player_start.x, 0.4, arena.player_start.z);
     let mut all_clear = false;
     let mut final_score = 0.0f32;
+    let mut final_rank = "ROOKIE";
 
     scene
         .into_kerabit("Surge")
@@ -176,9 +307,15 @@ fn main() {
         .run(move |ctx| {
             time_alive += ctx.dt();
             let dt = ctx.dt();
+            ctx.sync_audio_listener();
 
             if ctx.input().key_pressed(Key::Escape) {
-                ctx.quit();
+                if phase == Phase::Title {
+                    ctx.quit();
+                    return;
+                }
+                phase = Phase::Title;
+                player_pos = arena.player_start;
                 return;
             }
 
@@ -201,27 +338,110 @@ fn main() {
                     update_hazards(ctx, &arena, time_alive, 0.55);
                     follow_camera(ctx, &mut cam_eye, &mut cam_target, &arena, player_pos, dt, 2.2);
 
+                    if ctx.input().key_pressed(Key::Digit1) || ctx.input().key_pressed(Key::Up) {
+                        mode = GameMode::Timed;
+                    }
+                    if ctx.input().key_pressed(Key::Digit2) || ctx.input().key_pressed(Key::Down) {
+                        mode = GameMode::Endless;
+                    }
+                    if ctx.input().key_pressed(Key::Left) {
+                        let prev = if level_index == 0 {
+                            LEVEL_FILES.len() - 1
+                        } else {
+                            level_index - 1
+                        };
+                        if load_arena_at(
+                            ctx,
+                            prev,
+                            &mut arena,
+                            &mut player_pos,
+                            &mut cam_eye,
+                            &mut cam_target,
+                            &mut physics_ready,
+                        ) {
+                            level_index = prev;
+                        }
+                    }
+                    if ctx.input().key_pressed(Key::Right) {
+                        let next = (level_index + 1) % LEVEL_FILES.len();
+                        if load_arena_at(
+                            ctx,
+                            next,
+                            &mut arena,
+                            &mut player_pos,
+                            &mut cam_eye,
+                            &mut cam_target,
+                            &mut physics_ready,
+                        ) {
+                            level_index = next;
+                        }
+                    }
+
                     draw_flash(ctx, flash, flash_color);
                     ctx.ui()
                         .rect(0.0, 0.0, 1.0, 1.0, Color::rgba(0.08, 0.02, 0.04, 0.58));
                     let title = "SURGE";
                     let ts = 0.1;
-                    ctx.ui()
-                        .text(centered_x(title, ts), 0.32, ts, Color::rgb(1.0, 0.55, 0.35), title);
-                    let sub = "Survive 60s  ·  dodge the waves";
-                    let ss = 0.028;
                     ctx.ui().text(
-                        centered_x(sub, ss),
-                        0.46,
-                        ss,
-                        Color::rgb(0.85, 0.7, 0.68),
-                        sub,
+                        centered_x(title, ts),
+                        0.2,
+                        ts,
+                        Color::rgb(1.0, 0.55, 0.35),
+                        title,
                     );
-                    let hint = "Press Space";
-                    let hs = 0.034;
+
+                    let arena_line = format!(
+                        "Arena  {}/{}  ·  {}",
+                        level_index + 1,
+                        LEVEL_FILES.len(),
+                        ARENA_NAMES[level_index]
+                    );
+                    let asz = 0.026;
+                    ctx.ui().text(
+                        centered_x(&arena_line, asz),
+                        0.34,
+                        asz,
+                        Color::rgb(0.9, 0.78, 0.72),
+                        &arena_line,
+                    );
+
+                    let mode_line = format!("Mode  {}", mode.label());
+                    let msz = 0.032;
+                    ctx.ui().text(
+                        centered_x(&mode_line, msz),
+                        0.42,
+                        msz,
+                        Color::rgb(1.0, 0.75, 0.4),
+                        &mode_line,
+                    );
+                    let blurb = mode.blurb();
+                    let bsz = 0.022;
+                    ctx.ui().text(
+                        centered_x(blurb, bsz),
+                        0.48,
+                        bsz,
+                        Color::rgb(0.8, 0.68, 0.65),
+                        blurb,
+                    );
+
+                    let best_line = match mode {
+                        GameMode::Timed => format!("Best timed  {:.0}", bests.timed),
+                        GameMode::Endless => format!("Best endless  {:.0}", bests.endless),
+                    };
+                    let bsz2 = 0.024;
+                    ctx.ui().text(
+                        centered_x(&best_line, bsz2),
+                        0.56,
+                        bsz2,
+                        Color::rgb(0.85, 0.8, 0.75),
+                        &best_line,
+                    );
+
+                    let hint = "1/2 mode  ←/→ arena  Space start";
+                    let hs = 0.026;
                     ctx.ui().text(
                         centered_x(hint, hs),
-                        0.56,
+                        0.68,
                         hs,
                         Color::rgb(0.95, 0.9, 0.88),
                         hint,
@@ -239,9 +459,11 @@ fn main() {
                 Phase::Playing => {
                     elapsed += dt;
                     let speed_mul = wave_speed(elapsed);
-                    // Score: base time + wave bonus.
                     score += dt * (10.0 + (wave_index(elapsed) as f32 - 1.0) * 4.0);
-                    best_score = best_score.max(score);
+                    match mode {
+                        GameMode::Timed => bests.timed = bests.timed.max(score),
+                        GameMode::Endless => bests.endless = bests.endless.max(score),
+                    }
 
                     if ctx.input().key_pressed(Key::R) {
                         reset_run(
@@ -303,18 +525,26 @@ fn main() {
                         phase = Phase::Failed;
                         flash = 1.0;
                         flash_color = Color::rgb(0.95, 0.1, 0.18);
-                        best_score = best_score.max(score);
-                    } else if elapsed >= SURVIVE_SECS {
+                        match mode {
+                            GameMode::Timed => bests.timed = bests.timed.max(score),
+                            GameMode::Endless => bests.endless = bests.endless.max(score),
+                        }
+                        save_bests(&bests);
+                        play_sfx_at(ctx, "fail.wav", player_pos);
+                    } else if mode == GameMode::Timed && elapsed >= SURVIVE_SECS {
                         phase = Phase::Survived;
-                        final_score = score + 250.0; // clear bonus
-                        best_score = best_score.max(final_score);
+                        final_score = score + 250.0;
+                        bests.timed = bests.timed.max(final_score);
+                        final_rank = rank_for_score(final_score);
                         all_clear = level_index + 1 >= LEVEL_FILES.len();
+                        save_bests(&bests);
                         flash = 0.9;
                         flash_color = Color::rgb(1.0, 0.75, 0.25);
+                        play_sfx_at(ctx, "win.wav", player_pos);
                     }
 
                     draw_flash(ctx, flash, flash_color);
-                    draw_hud(ctx, level_index, elapsed, score, wave_index(elapsed));
+                    draw_hud(ctx, mode, level_index, elapsed, score, wave_index(elapsed));
                 }
                 Phase::Survived => {
                     apply_player_visual(ctx, &arena, player_pos);
@@ -328,29 +558,38 @@ fn main() {
                     let hs = 0.08;
                     ctx.ui().text(
                         centered_x(headline, hs),
-                        0.3,
+                        0.26,
                         hs,
                         Color::rgb(1.0, 0.8, 0.35),
                         headline,
                     );
-                    let score_line = format!("Score {final_score:.0}");
-                    let ss = 0.036;
+                    let rank_line = format!("Rank  {final_rank}");
+                    let rs = 0.04;
+                    ctx.ui().text(
+                        centered_x(&rank_line, rs),
+                        0.38,
+                        rs,
+                        Color::rgb(1.0, 0.7, 0.4),
+                        &rank_line,
+                    );
+                    let score_line = format!("Score {final_score:.0}   Best {:.0}", bests.timed);
+                    let ss = 0.032;
                     ctx.ui().text(
                         centered_x(&score_line, ss),
-                        0.44,
+                        0.48,
                         ss,
                         Color::WHITE,
                         &score_line,
                     );
                     let prompt = if all_clear {
-                        "Space — done"
+                        "Space — title"
                     } else {
                         "Space — next arena"
                     };
                     let ps = 0.03;
                     ctx.ui().text(
                         centered_x(prompt, ps),
-                        0.56,
+                        0.6,
                         ps,
                         Color::rgb(0.85, 0.78, 0.72),
                         prompt,
@@ -358,7 +597,7 @@ fn main() {
 
                     if ctx.input().key_pressed(Key::Space) {
                         if all_clear {
-                            ctx.quit();
+                            phase = Phase::Title;
                         } else if !advance_arena(
                             ctx,
                             &mut level_index,
@@ -372,7 +611,7 @@ fn main() {
                             &mut cam_target,
                             &mut physics_ready,
                         ) {
-                            ctx.quit();
+                            phase = Phase::Title;
                         }
                     }
                 }
@@ -387,21 +626,39 @@ fn main() {
                     let fail = "DOWN";
                     let fs = 0.09;
                     ctx.ui()
-                        .text(centered_x(fail, fs), 0.32, fs, Color::rgb(1.0, 0.3, 0.35), fail);
-                    let score_line = format!("Score {score:.0}   Best {best_score:.0}");
+                        .text(centered_x(fail, fs), 0.28, fs, Color::rgb(1.0, 0.3, 0.35), fail);
+
+                    let best = match mode {
+                        GameMode::Timed => bests.timed,
+                        GameMode::Endless => bests.endless,
+                    };
+                    let score_line = format!("Score {score:.0}   Best {best:.0}");
                     let ss = 0.03;
                     ctx.ui().text(
                         centered_x(&score_line, ss),
-                        0.46,
+                        0.42,
                         ss,
                         Color::rgb(0.95, 0.85, 0.85),
                         &score_line,
                     );
-                    let prompt = "Space / R — retry";
-                    let ps = 0.03;
+
+                    if mode == GameMode::Endless {
+                        let time_line = format!("Survived {elapsed:.1}s  ·  Wave {}", wave_index(elapsed));
+                        let ts = 0.026;
+                        ctx.ui().text(
+                            centered_x(&time_line, ts),
+                            0.5,
+                            ts,
+                            Color::rgb(0.9, 0.7, 0.7),
+                            &time_line,
+                        );
+                    }
+
+                    let prompt = "Space / R — retry   Esc — title";
+                    let ps = 0.028;
                     ctx.ui().text(
                         centered_x(prompt, ps),
-                        0.56,
+                        0.6,
                         ps,
                         Color::rgb(0.9, 0.8, 0.8),
                         prompt,
@@ -453,7 +710,6 @@ fn apply_player_visual(ctx: &mut Context<'_>, arena: &Arena, pos: Vec3) {
     }
 }
 
-/// Animate hazards; returns live centers for collision.
 fn update_hazards(
     ctx: &mut Context<'_>,
     arena: &Arena,
@@ -467,7 +723,6 @@ fn update_hazards(
         match h.motion {
             Motion::Orbit => {
                 let r = h.amplitude.max(0.5);
-                // Preserve sign of rest quadrant via phase baked into amplitude angle.
                 let base_angle = h.rest.z.atan2(h.rest.x);
                 let a = base_angle + ang * (1.1 + i as f32 * 0.07);
                 pos.x = a.cos() * r;
@@ -521,32 +776,61 @@ fn draw_flash(ctx: &mut Context<'_>, flash: f32, color: Color) {
     ctx.ui().rect(0.0, 0.0, 1.0, 1.0, tint);
 }
 
-fn draw_hud(ctx: &mut Context<'_>, level_index: usize, elapsed: f32, score: f32, wave: u32) {
-    let remain = (SURVIVE_SECS - elapsed).max(0.0);
-    let arena_line = format!("Arena {}/{}", level_index + 1, LEVEL_FILES.len());
-    let time_line = format!("Time {remain:.1}s");
+fn draw_hud(
+    ctx: &mut Context<'_>,
+    mode: GameMode,
+    level_index: usize,
+    elapsed: f32,
+    score: f32,
+    wave: u32,
+) {
+    let arena_line = format!(
+        "{}  ·  {}/{}",
+        ARENA_NAMES[level_index],
+        level_index + 1,
+        LEVEL_FILES.len()
+    );
     let score_line = format!("Score {score:.0}");
     let wave_line = format!("Wave {wave}");
+    let mode_tag = match mode {
+        GameMode::Timed => "TIMED",
+        GameMode::Endless => "ENDLESS",
+    };
+
     ctx.ui()
-        .text(0.03, 0.03, 0.028, Color::rgb(0.95, 0.88, 0.82), &arena_line);
+        .text(0.03, 0.03, 0.022, Color::rgb(0.75, 0.55, 0.5), mode_tag);
     ctx.ui()
-        .text(0.03, 0.07, 0.032, Color::rgb(1.0, 0.7, 0.35), &time_line);
+        .text(0.03, 0.065, 0.028, Color::rgb(0.95, 0.88, 0.82), &arena_line);
+
+    match mode {
+        GameMode::Timed => {
+            let remain = (SURVIVE_SECS - elapsed).max(0.0);
+            let time_line = format!("Time {remain:.1}s");
+            ctx.ui()
+                .text(0.03, 0.11, 0.032, Color::rgb(1.0, 0.7, 0.35), &time_line);
+            let bar_w = (remain / SURVIVE_SECS).clamp(0.0, 1.0) * 0.3;
+            ctx.ui()
+                .rect(0.03, 0.25, 0.3, 0.012, Color::rgba(0.2, 0.1, 0.1, 0.7));
+            ctx.ui()
+                .rect(0.03, 0.25, bar_w, 0.012, Color::rgb(1.0, 0.55, 0.25));
+        }
+        GameMode::Endless => {
+            let time_line = format!("Alive {elapsed:.1}s");
+            ctx.ui()
+                .text(0.03, 0.11, 0.032, Color::rgb(1.0, 0.55, 0.45), &time_line);
+        }
+    }
+
     ctx.ui()
-        .text(0.03, 0.12, 0.028, Color::rgb(0.95, 0.92, 0.85), &score_line);
+        .text(0.03, 0.16, 0.028, Color::rgb(0.95, 0.92, 0.85), &score_line);
     ctx.ui()
-        .text(0.03, 0.16, 0.024, Color::rgb(0.85, 0.45, 0.4), &wave_line);
-    // Timer bar.
-    let bar_w = (remain / SURVIVE_SECS).clamp(0.0, 1.0) * 0.3;
-    ctx.ui()
-        .rect(0.03, 0.21, 0.3, 0.012, Color::rgba(0.2, 0.1, 0.1, 0.7));
-    ctx.ui()
-        .rect(0.03, 0.21, bar_w, 0.012, Color::rgb(1.0, 0.55, 0.25));
+        .text(0.03, 0.205, 0.024, Color::rgb(0.85, 0.45, 0.4), &wave_line);
     ctx.ui().text(
         0.03,
         0.94,
         0.022,
         Color::rgb(0.7, 0.62, 0.6),
-        "WASD move  R retry  Esc quit",
+        "WASD move  R retry  Esc title",
     );
 }
 
@@ -576,7 +860,6 @@ impl Arena {
                 let amplitude = match motion {
                     Motion::Orbit => (e.at.x * e.at.x + e.at.z * e.at.z).sqrt().max(1.0),
                     Motion::SlideX | Motion::SlideZ => {
-                        // Slide within ~half the distance from origin, capped.
                         (e.at.x.abs().max(e.at.z.abs()).max(2.0) * 0.85).min(5.5)
                     }
                 };
@@ -612,7 +895,6 @@ impl Arena {
     }
 }
 
-/// Surge roles: shared tags with Reach, plus motion tags on hazards.
 fn entity_has_role(e: &SceneEntity, role: &str) -> bool {
     const KNOWN: &[&str] = &["player", "goal", "ground", "wall", "hazard"];
     let tagged = KNOWN.iter().any(|r| e.has_tag(r));
@@ -635,7 +917,6 @@ fn hazard_motion(e: &SceneEntity) -> Motion {
     } else if e.has_tag("orbit") {
         Motion::Orbit
     } else {
-        // Default: orbit if off-center, else slide on longer rest axis.
         let xz = (e.at.x * e.at.x + e.at.z * e.at.z).sqrt();
         if xz > 0.75 {
             Motion::Orbit
@@ -660,18 +941,22 @@ mod tests {
             material: SceneMaterial {
                 color: Color::WHITE,
                 roughness: 0.5,
+                metallic: 0.0,
                 texture: None,
             },
             at,
             rotation: Quat::IDENTITY,
             scale,
             parent: None,
+            components: Default::default(),
+            extras: Default::default(),
         }
     }
 
     #[test]
     fn arenas_load_with_required_roles() {
-        assert_eq!(LEVEL_FILES.len(), 2, "E7 accept: two arenas");
+        assert_eq!(LEVEL_FILES.len(), 5, "M6: five arenas");
+        assert_eq!(ARENA_NAMES.len(), LEVEL_FILES.len());
         for file in LEVEL_FILES {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("levels")
@@ -688,7 +973,10 @@ mod tests {
             let arena = Arena::from_scene(&scene);
             assert!(!arena.hazards.is_empty(), "{file}: expected hazards");
             assert!(
-                arena.hazards.iter().any(|h| matches!(h.motion, Motion::Orbit))
+                arena
+                    .hazards
+                    .iter()
+                    .any(|h| matches!(h.motion, Motion::Orbit))
                     || arena
                         .hazards
                         .iter()
@@ -696,6 +984,15 @@ mod tests {
                 "{file}: expected motion tags"
             );
         }
+    }
+
+    #[test]
+    fn rank_tiers() {
+        assert_eq!(rank_for_score(100.0), "ROOKIE");
+        assert_eq!(rank_for_score(600.0), "BRONZE");
+        assert_eq!(rank_for_score(1200.0), "SILVER");
+        assert_eq!(rank_for_score(1800.0), "GOLD");
+        assert_eq!(rank_for_score(2500.0), "PLATINUM");
     }
 
     #[test]
@@ -724,12 +1021,15 @@ mod tests {
                     material: SceneMaterial {
                         color: Color::GRAY,
                         roughness: 0.9,
+                        metallic: 0.0,
                         texture: None,
                     },
                     at: Vec3::ZERO,
                     rotation: Quat::IDENTITY,
                     scale: Vec3::ONE,
                     parent: None,
+                    components: Default::default(),
+                    extras: Default::default(),
                 },
                 entity(
                     "spin",
@@ -744,6 +1044,8 @@ mod tests {
                     Vec3::ONE,
                 ),
             ],
+            components: Default::default(),
+            extras: Default::default(),
         };
         let arena = Arena::from_scene(&scene);
         assert_eq!(arena.hazards.len(), 2);
