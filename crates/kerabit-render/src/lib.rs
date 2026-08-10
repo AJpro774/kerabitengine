@@ -32,7 +32,7 @@ pub use offscreen::OffscreenLitRenderer;
 pub use overlay::{OverlayCommands, OverlayQuad};
 pub use particles::{ParticleBurst, ParticleSystem, MAX_PARTICLES};
 pub use picking::{
-    pick_closest, pointer_to_ndc, ray_aabb, ray_from_ndc, ray_plane_y, Aabb, Ray,
+    aabb_in_frustum, pick_closest, pointer_to_ndc, ray_aabb, ray_from_ndc, ray_plane_y, Aabb, Ray,
 };
 pub use post::{PostStack, HDR_FORMAT};
 pub use shadow::{directional_light_matrix, ShadowMap, SHADOW_HALF_EXTENT, SHADOW_MAP_SIZE};

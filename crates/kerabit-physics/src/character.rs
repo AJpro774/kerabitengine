@@ -123,10 +123,8 @@ impl CharacterController {
                 self.half_extents,
                 0.08,
             );
-            if (down.position.y - self.position.y).abs() < 1e-4 {
-                if self.velocity.y < 0.0 {
-                    self.velocity.y = 0.0;
-                }
+            if (down.position.y - self.position.y).abs() < 1e-4 && self.velocity.y < 0.0 {
+                self.velocity.y = 0.0;
             }
         }
 

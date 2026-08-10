@@ -177,6 +177,49 @@ pub fn ray_plane_y(ray: Ray, y: f32) -> Option<Vec3> {
     Some(ray.at(t))
 }
 
+/// True if the world AABB intersects the camera frustum (WebGPU / glam `[0,1]` depth).
+///
+/// Homogeneous clip-space test: reject only when all eight corners lie outside the
+/// same frustum plane. Conservative (AABB may be slightly larger than the mesh).
+pub fn aabb_in_frustum(view_proj: Mat4, aabb: Aabb) -> bool {
+    let corners = [
+        Vec3::new(aabb.min.x, aabb.min.y, aabb.min.z),
+        Vec3::new(aabb.max.x, aabb.min.y, aabb.min.z),
+        Vec3::new(aabb.min.x, aabb.max.y, aabb.min.z),
+        Vec3::new(aabb.max.x, aabb.max.y, aabb.min.z),
+        Vec3::new(aabb.min.x, aabb.min.y, aabb.max.z),
+        Vec3::new(aabb.max.x, aabb.min.y, aabb.max.z),
+        Vec3::new(aabb.min.x, aabb.max.y, aabb.max.z),
+        Vec3::new(aabb.max.x, aabb.max.y, aabb.max.z),
+    ];
+    let mut clip = [Vec4::ZERO; 8];
+    for (i, c) in corners.into_iter().enumerate() {
+        clip[i] = view_proj * Vec4::new(c.x, c.y, c.z, 1.0);
+    }
+
+    // Outside left / right / bottom / top / near / far.
+    if clip.iter().all(|c| c.x < -c.w) {
+        return false;
+    }
+    if clip.iter().all(|c| c.x > c.w) {
+        return false;
+    }
+    if clip.iter().all(|c| c.y < -c.w) {
+        return false;
+    }
+    if clip.iter().all(|c| c.y > c.w) {
+        return false;
+    }
+    // glam `perspective_rh` maps near→0, far→1 (no perspective divide needed here).
+    if clip.iter().all(|c| c.z < 0.0) {
+        return false;
+    }
+    if clip.iter().all(|c| c.z > c.w) {
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +249,21 @@ mod tests {
         let cam = Camera::perspective(60.0).look_at(vec3(0.0, 0.0, 5.0), Vec3::ZERO);
         let ray = ray_from_ndc(&cam, 0.0, 0.0);
         assert!(ray.direction.z < 0.0);
+    }
+
+    #[test]
+    fn frustum_keeps_origin_cube() {
+        let cam = Camera::perspective(60.0).look_at(vec3(0.0, 0.0, 5.0), Vec3::ZERO);
+        let aabb = Aabb::from_center_half_extents(Vec3::ZERO, Vec3::splat(0.5));
+        assert!(aabb_in_frustum(cam.view_proj(), aabb));
+    }
+
+    #[test]
+    fn frustum_rejects_far_cube() {
+        let cam = Camera::perspective(60.0)
+            .look_at(vec3(0.0, 0.0, 5.0), Vec3::ZERO)
+            .near_far(0.1, 50.0);
+        let aabb = Aabb::from_center_half_extents(vec3(0.0, 0.0, -200.0), Vec3::splat(0.5));
+        assert!(!aabb_in_frustum(cam.view_proj(), aabb));
     }
 }

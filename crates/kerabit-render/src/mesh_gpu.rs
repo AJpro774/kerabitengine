@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use wgpu::util::DeviceExt;
 
 use crate::mesh::Mesh;
+use crate::picking::Aabb;
 
 /// Opaque handle to a mesh resident on the GPU.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,6 +25,8 @@ pub struct GpuMesh {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub index_count: u32,
+    /// Local-space AABB of the CPU mesh (used for frustum culling).
+    pub local_aabb: Aabb,
 }
 
 /// Uploads CPU [`Mesh`]es once and looks them up by [`MeshId`].
@@ -69,6 +72,7 @@ impl MeshCache {
                 vertex_buffer,
                 index_buffer,
                 index_count: mesh.index_count(),
+                local_aabb: Aabb::from_mesh(mesh),
             },
         );
         self.by_content.insert(key, id);
@@ -77,6 +81,14 @@ impl MeshCache {
 
     pub fn get(&self, id: MeshId) -> Option<&GpuMesh> {
         self.meshes.get(&id)
+    }
+
+    /// Local AABB for an uploaded mesh (unit cube if unknown).
+    pub fn local_aabb(&self, id: MeshId) -> Aabb {
+        self.meshes
+            .get(&id)
+            .map(|m| m.local_aabb)
+            .unwrap_or_else(|| Aabb::from_center_half_extents(kerabit_math::Vec3::ZERO, kerabit_math::Vec3::splat(0.5)))
     }
 }
 

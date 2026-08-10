@@ -170,7 +170,7 @@ fn main() {
 | **Surge** (score-attack) | `cargo run -p surge` |
 | **Showcase** (trailer) | `cargo run -p showcase` |
 | Playground | `cargo run -p kerabit --example playground` |
-| Many cubes | `cargo run -p kerabit --example many_cubes --release` |
+| Many cubes (~10k, release) | `cargo run -p kerabit --example many_cubes --release` |
 | Load mesh | `cargo run -p kerabit --example load_mesh` |
 | Physics + audio | `cargo run -p kerabit --example physics_audio` |
 | Physics sandbox (M2) | `cargo run -p kerabit --example physics_sandbox` |

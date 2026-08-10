@@ -226,8 +226,33 @@ impl DrawItem {
     }
 }
 
-/// Max instances per frame (release-friendly path for ~1k cubes).
-pub const MAX_INSTANCES: usize = 2048;
+/// Max instances per frame (M8: headroom for ~10k interactive cubes).
+pub const MAX_INSTANCES: usize = 16384;
+
+/// Per-batch range in the packed instance buffer: mesh, albedo, normal, start, count.
+pub type DrawBatchRange = (crate::MeshId, crate::TextureId, crate::TextureId, u32, u32);
+
+/// Drop draws whose world AABB lies fully outside the camera frustum.
+///
+/// Uses local mesh AABBs from `local_aabb`, transformed by each draw's model
+/// matrix. Unknown meshes fall back to a unit cube (see [`MeshCache::local_aabb`]).
+pub fn frustum_cull_draws(
+    view_proj: Mat4,
+    draws: &[DrawItem],
+    mut local_aabb: impl FnMut(crate::MeshId) -> crate::Aabb,
+) -> Vec<DrawItem> {
+    let mut out = Vec::with_capacity(draws.len().min(MAX_INSTANCES));
+    for item in draws {
+        if out.len() >= MAX_INSTANCES {
+            break;
+        }
+        let world = local_aabb(item.mesh).transformed(item.model);
+        if crate::aabb_in_frustum(view_proj, world) {
+            out.push(item.clone());
+        }
+    }
+    out
+}
 
 /// Pack draws into a flat instance buffer + per-mesh ranges (shared by lit + shadow).
 ///
@@ -236,10 +261,7 @@ pub fn pack_draw_batches(
     draws: &[DrawItem],
     white: crate::TextureId,
     flat_normal: crate::TextureId,
-) -> (
-    Vec<InstanceRaw>,
-    Vec<(crate::MeshId, crate::TextureId, crate::TextureId, u32, u32)>,
-) {
+) -> (Vec<InstanceRaw>, Vec<DrawBatchRange>) {
     let mut batches: Vec<(
         crate::MeshId,
         crate::TextureId,
@@ -261,8 +283,7 @@ pub fn pack_draw_batches(
     }
 
     let mut flat: Vec<InstanceRaw> = Vec::with_capacity(draws.len().min(MAX_INSTANCES));
-    let mut ranges: Vec<(crate::MeshId, crate::TextureId, crate::TextureId, u32, u32)> =
-        Vec::with_capacity(batches.len());
+    let mut ranges: Vec<DrawBatchRange> = Vec::with_capacity(batches.len());
     for (mesh, albedo, normal, instances) in batches {
         let start = flat.len() as u32;
         let count = instances.len() as u32;

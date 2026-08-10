@@ -11,8 +11,9 @@ const DEFAULT_SNAP: f32 = 0.5;
 const HANDLE_PX: f32 = 10.0;
 const AXIS_LEN: f32 = 1.25;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GizmoMode {
+    #[default]
     Translate,
     Rotate,
     Scale,
@@ -87,12 +88,6 @@ impl GizmoState {
     /// True while an axis handle drag is active.
     pub fn is_dragging(&self) -> bool {
         self.drag_axis.is_some()
-    }
-}
-
-impl Default for GizmoMode {
-    fn default() -> Self {
-        Self::Translate
     }
 }
 

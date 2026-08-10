@@ -47,12 +47,15 @@ Static pages under `site/docs/` (Getting Started, API tour, Editor). Deploy from
 ```bash
 cargo check --workspace
 cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p reach
 cargo run -p surge
 cargo run -p kerabit-editor
+# M8 stress (~10k cubes; prefer --release)
+cargo run -p kerabit --example many_cubes --release
 ```
 
-Prefer `cargo fmt` / `clippy -D warnings` before opening a PR. CI runs check+test on macOS, Windows, and Ubuntu (see `.github/workflows/ci.yml`).
+Prefer `cargo fmt` / `clippy -D warnings` before opening a PR. CI runs check+test+clippy on macOS, Windows, and Ubuntu (see `.github/workflows/ci.yml`).
 
 ## What not to do
 

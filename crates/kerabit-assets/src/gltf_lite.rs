@@ -66,7 +66,7 @@ pub fn load_gltf(path: impl AsRef<Path>) -> Result<GltfMesh, AssetError> {
         .map(|tc| tc.into_f32().collect());
 
     let mut vertices = Vec::with_capacity(positions.len());
-    for i in 0..positions.len() {
+    for (i, position) in positions.iter().enumerate() {
         let normal = normals
             .as_ref()
             .and_then(|n| n.get(i).copied())
@@ -76,7 +76,7 @@ pub fn load_gltf(path: impl AsRef<Path>) -> Result<GltfMesh, AssetError> {
             .and_then(|t| t.get(i).copied())
             .unwrap_or([0.0, 0.0]);
         vertices.push(Vertex {
-            position: positions[i],
+            position: *position,
             normal,
             uv,
         });

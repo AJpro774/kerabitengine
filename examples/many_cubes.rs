@@ -1,4 +1,4 @@
-//! Kerabit P4 stress — ~1000 instanced cubes + hierarchy child.
+//! Kerabit M8 stress — ~10k instanced cubes + hierarchy child.
 //!
 //! ```bash
 //! cargo run -p kerabit --example many_cubes --release
@@ -8,14 +8,14 @@
 
 use kerabit::prelude::*;
 
-const GRID: i32 = 10; // 10×10×10 = 1000 cubes
+const GRID: i32 = 22; // 22×22×22 = 10_648 cubes
 
 fn main() {
     let mut builder = Kerabit::new("Kerabit — many cubes")
         .clear_color(Color::rgb(0.06, 0.07, 0.09))
         .spawn(
             Entity::new("ground")
-                .mesh(Mesh::plane(40.0))
+                .mesh(Mesh::plane(60.0))
                 .material(Material::color(Color::GRAY).roughness(0.95))
                 .at(Vec3::ZERO),
         )
@@ -33,11 +33,11 @@ fn main() {
                 .at(Vec3::new(1.4, 0.0, 0.0))
                 .parent("pivot"),
         )
-        .camera(Camera::perspective(60.0).look_at(vec3(14.0, 10.0, 18.0), Vec3::ZERO))
+        .camera(Camera::perspective(60.0).look_at(vec3(28.0, 20.0, 36.0), Vec3::ZERO))
         .light(Light::sun(vec3(-0.4, -1.0, -0.2)).intensity(1.15))
         .ambient(Color::rgb(0.12, 0.13, 0.15));
 
-    let spacing = 1.15;
+    let spacing = 1.05;
     let origin = -((GRID - 1) as f32) * spacing * 0.5;
     for z in 0..GRID {
         for y in 0..GRID {
@@ -96,7 +96,7 @@ fn main() {
             cam.eye = cam.target + Vec3::new(yaw.sin() * cp, pitch.sin(), yaw.cos() * cp) * radius;
         }
 
-        let speed = 12.0 * dt;
+        let speed = 18.0 * dt;
         let forward = (cam.target - cam.eye).normalize_or_zero();
         let right = forward.cross(cam.up).normalize_or_zero();
         let mut move_dir = Vec3::ZERO;

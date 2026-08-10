@@ -595,24 +595,23 @@ fn main() {
                         prompt,
                     );
 
-                    if ctx.input().key_pressed(Key::Space) {
-                        if all_clear {
-                            phase = Phase::Title;
-                        } else if !advance_arena(
-                            ctx,
-                            &mut level_index,
-                            &mut arena,
-                            &mut player_pos,
-                            &mut phase,
-                            &mut elapsed,
-                            &mut score,
-                            &mut flash,
-                            &mut cam_eye,
-                            &mut cam_target,
-                            &mut physics_ready,
-                        ) {
-                            phase = Phase::Title;
-                        }
+                    if ctx.input().key_pressed(Key::Space)
+                        && (all_clear
+                            || !advance_arena(
+                                ctx,
+                                &mut level_index,
+                                &mut arena,
+                                &mut player_pos,
+                                &mut phase,
+                                &mut elapsed,
+                                &mut score,
+                                &mut flash,
+                                &mut cam_eye,
+                                &mut cam_target,
+                                &mut physics_ready,
+                            ))
+                    {
+                        phase = Phase::Title;
                     }
                 }
                 Phase::Failed => {

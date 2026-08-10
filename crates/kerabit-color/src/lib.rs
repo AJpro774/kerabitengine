@@ -86,8 +86,8 @@ mod tests {
     fn named_constants() {
         assert_eq!(Color::WHITE.to_rgb_array(), [1.0, 1.0, 1.0]);
         assert_eq!(Color::BLACK.to_rgb_array(), [0.0, 0.0, 0.0]);
-        assert!(Color::ORANGE.r > Color::ORANGE.g);
-        assert!(Color::GRAY.r > 0.0);
+        assert_eq!(Color::ORANGE.to_rgb_array(), [1.0, 0.55, 0.1]);
+        assert_eq!(Color::GRAY.to_rgb_array(), [0.45, 0.45, 0.48]);
     }
 
     #[test]

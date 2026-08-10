@@ -10,7 +10,9 @@ use crate::mesh_gpu::{MeshCache, MeshId};
 use crate::shadow::{directional_light_matrix, ShadowMap, SHADOW_HALF_EXTENT};
 use crate::sky::SkyPass;
 use crate::texture::{TextureCache, TextureId};
-use crate::uniforms::{pack_draw_batches, DrawItem, FrameUniforms, InstanceRaw, MAX_INSTANCES};
+use crate::uniforms::{
+    frustum_cull_draws, pack_draw_batches, DrawItem, FrameUniforms, InstanceRaw, MAX_INSTANCES,
+};
 use crate::vertex::Vertex;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -296,7 +298,10 @@ impl OffscreenLitRenderer {
 
         let white = self.texture_cache.white();
         let flat_n = self.texture_cache.flat_normal();
-        let (flat, ranges) = pack_draw_batches(draws, white, flat_n);
+        let visible = frustum_cull_draws(camera.view_proj(), draws, |id| {
+            self.mesh_cache.local_aabb(id)
+        });
+        let (flat, ranges) = pack_draw_batches(&visible, white, flat_n);
         if !flat.is_empty() {
             queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&flat));
         }

@@ -625,11 +625,11 @@ fn main() {
                         2.0,
                     );
 
-                    if ctx.input().key_pressed(Key::Left) || ctx.input().key_pressed(Key::A) {
-                        if chapter_cursor > 0 {
-                            chapter_cursor -= 1;
-                            play_sfx(ctx, "ui.wav");
-                        }
+                    if (ctx.input().key_pressed(Key::Left) || ctx.input().key_pressed(Key::A))
+                        && chapter_cursor > 0
+                    {
+                        chapter_cursor -= 1;
+                        play_sfx(ctx, "ui.wav");
                     }
                     if ctx.input().key_pressed(Key::Right) || ctx.input().key_pressed(Key::D) {
                         let max = progress.unlocked_chapter.min(CHAPTERS.len() - 1);
