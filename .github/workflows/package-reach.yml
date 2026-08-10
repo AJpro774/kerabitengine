@@ -20,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
       - name: Package Reach.app
         run: ./scripts/package-reach.sh
       - name: Upload artifact
@@ -35,6 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
       - name: Package Reach folder
         shell: pwsh
         run: ./scripts/package-reach-windows.ps1
