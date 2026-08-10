@@ -7,9 +7,8 @@ name: Package Reach
 
 on:
   workflow_dispatch:
-  # Uncomment when cutting GitHub Releases from tags:
-  # push:
-  #   tags: ["v*"]
+  push:
+    tags: ["v*"]
 
 env:
   CARGO_TERM_COLOR: always

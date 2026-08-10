@@ -91,29 +91,30 @@ cargo run -p reach</code></pre>
         <div class="download-row">
           <a
             class="btn primary"
-            href="https://github.com/AJpro774/kerabitengine/releases/latest"
-            >GitHub Releases</a
+            href="https://github.com/AJpro774/kerabitengine/releases/tag/v1.0.0-alpha.2"
+            >v1.0.0-alpha.2 downloads</a
           >
           <a
             class="btn ghost"
-            href="https://github.com/AJpro774/kerabitengine/blob/main/scripts/package-reach.sh"
-            >macOS script</a
+            href="https://github.com/AJpro774/kerabitengine/releases/download/v1.0.0-alpha.2/Reach-macos.zip"
+            >macOS zip</a
           >
           <a
             class="btn ghost"
-            href="https://github.com/AJpro774/kerabitengine/blob/main/scripts/package-reach-windows.ps1"
-            >Windows script</a
+            href="https://github.com/AJpro774/kerabitengine/releases/download/v1.0.0-alpha.2/Reach-windows.zip"
+            >Windows zip</a
           >
         </div>
         <p class="note">
-          Expected artifacts when published:
+          Alpha.2 Summit publish includes
           <code>Reach-macos.zip</code> (Reach.app) and
           <code>Reach-windows.zip</code> (<code>reach.exe</code> +
-          <code>levels/</code> + <code>assets/</code>). Build yourself with
+          <code>levels/</code> + <code>assets/</code>). Rebuild locally with
           <code>./scripts/package-reach.sh</code> or
-          <code>pwsh ./scripts/package-reach-windows.ps1</code>. CI can attach
-          both via the <code>package-reach</code> workflow
-          (<code>workflow_dispatch</code>).
+          <code>pwsh ./scripts/package-reach-windows.ps1</code>. Tag pushes
+          (<code>v*</code>) and manual
+          <code>workflow_dispatch</code> run the
+          <code>package-reach</code> workflow.
         </p>
       </section>
 

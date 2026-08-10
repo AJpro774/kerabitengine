@@ -55,6 +55,7 @@ Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundli
 **M4** — done (editor undo/multi-select/prefabs/snap/Play polish)  
 **M5** — done (Reach 12-level / 3-chapter campaign)  
 **M6** — done (Surge timed + endless modes, 5 arenas; `games/showcase` trailer)  
-**M7–M9** — in progress / not started
+**M7** — done (site downloads → `v1.0.0-alpha.2` Reach macOS+Windows zips; tag-triggered `package-reach`)  
+**M8–M9** — not started
 
 See also [ARCHITECTURE.md](ARCHITECTURE.md), [API.md](API.md), and [README.md](README.md).
