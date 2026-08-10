@@ -1,0 +1,8 @@
+{
+  "framework": null,
+  "installCommand": "true",
+  "buildCommand": "cd site && npm run build",
+  "outputDirectory": "site/public",
+  "cleanUrls": true,
+  "trailingSlash": false
+}
