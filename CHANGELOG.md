@@ -3,8 +3,31 @@
 All notable changes to Kerabit are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/) with alpha
-prerelease tags (`1.0.0-alpha.N`).
+and this project follows [Semantic Versioning](https://semver.org/).
+
+## [1.0.0] — 2026-08-10
+
+Kerabit **1.0** — Summit ship. Install stays rustup + cargo. Reach player zips on GitHub Releases.
+
+### Added
+
+- **Reach players** — `Reach-macos.zip` (Reach.app) and `Reach-windows.zip` (`reach.exe` + `levels/` + `assets/`); tag-triggered `package-reach` workflow.
+- **Hardening (M8)** — Clippy in CI; `MAX_INSTANCES` raised to **16384**; frustum culling; `many_cubes` interactive ~10k cubes.
+- **Editor** — undo/redo, multi-select, prefabs, snap persistence, in-viewport Play (egui remains in `tools/` only).
+- **Games** — Reach 12-level / 3-chapter campaign; Surge timed + endless; Showcase trailer crate.
+- **Engine depth (Summit)** — PBR-lite, ≤4 lights, tonemap/bloom, particles; dynamics + character controller; spatial audio + mix buses; scene `components` / `extras`.
+- Docs site (Getting Started, API tour, Editor) at [kerabitengine.vercel.app](https://kerabitengine.vercel.app).
+
+### Changed
+
+- Workspace version → **`1.0.0`**.
+- Public API freeze table in [API.md](API.md) retargeted from alpha to **1.0** (experimental surfaces unchanged: editor UI, Surge motion tags).
+- Site / README / roadmap flipped from alpha.2 working branch to Kerabit 1.0.
+
+### Notes
+
+- **No scripting in 1.0** — Rust + scenes + tags only. Post-1.0 locked: scripting language = **Rhai**; in-engine code editor deferred (follows Rhai runtime); egui stays in `tools/`.
+- Breaking changes to **Frozen for 1.0** APIs require a semver bump and a CHANGELOG entry.
 
 ## [1.0.0-alpha.2] — 2026-08-01
 

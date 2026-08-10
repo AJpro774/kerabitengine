@@ -4,11 +4,11 @@ Lean native Rust 3D engine: **simple for the game author, deep in the engine**.
 
 **Site:** [kerabitengine.vercel.app](https://kerabitengine.vercel.app) · **Repo:** [github.com/AJpro774/kerabitengine](https://github.com/AJpro774/kerabitengine)
 
-> **Status:** **Alpha** (`1.0.0-alpha.2`). Flagship: **Reach**. Second title: **Surge**. Trailer: **Showcase**. Summit roadmap: [ROADMAP.md](ROADMAP.md).
+> **Status:** **Kerabit 1.0** (`1.0.0`). Flagship: **Reach**. Second title: **Surge**. Trailer: **Showcase**. Summit roadmap (complete): [ROADMAP.md](ROADMAP.md).
 
-## Alpha
+## Install
 
-Clone-and-cargo release for authors. Install is unchanged:
+Clone-and-cargo for authors. Install is unchanged:
 
 1. Install [Rust stable](https://rustup.rs/) via `rustup` (toolchain pinned in `rust-toolchain.toml`)
 2. Working GPU drivers (Metal on macOS; Vulkan/Metal/DX12 via wgpu elsewhere)
@@ -183,7 +183,7 @@ fn main() {
 | [Site docs](https://kerabitengine.vercel.app/docs/) | Getting Started, API tour, Editor guide |
 | [ROADMAP.md](ROADMAP.md) | Summit moonshot phases M0–M9 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, frame loop, GPU model, phase status |
-| [API.md](API.md) | Public surface contract + alpha freeze |
+| [API.md](API.md) | Public surface contract + 1.0 freeze |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Ownership, editor workflow, accept gates |
 

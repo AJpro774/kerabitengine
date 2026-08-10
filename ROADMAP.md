@@ -4,7 +4,7 @@ Moonshot plan to level Kerabit into a serious tiny-engine competitor for small t
 
 **Install stays the same:** [rustup](https://rustup.rs/) + `git clone` + `cargo run -p …` (no new installer).
 
-**Version path:** `1.0.0-alpha.2` (this working branch) → `1.0.0-beta.1` mid-moonshot → **`1.0.0`** when accept gates pass.
+**Version path:** closed at **`1.0.0`** (Summit M0–M9 complete). Post-1.0 work follows the locked decisions below.
 
 ## Phase map (M0–M9)
 
@@ -36,11 +36,16 @@ Merge spine: **engine foundations → editor → games → product.**
 
 ## Locked decisions (1.0)
 
-- Public game API stays tiny; breaks only with beta/1.0 + CHANGELOG
+- Public game API stays tiny; breaks only with semver + CHANGELOG
 - Editor stays egui in `tools/`; never leak egui into `kerabit`
 - Platforms: macOS + Windows + Linux compile/run; player zips at least macOS + Windows
-- No Lua/JS scripting runtime in 1.0 — Rust + scenes + tags
-- Size budget far under 20GB; no vendored mega-engines
+- **No scripting in 1.0** — Rust + scenes + tags only (no Lua/JS/Rhai runtime in this release)
+
+## Locked decisions (post-1.0)
+
+- Scripting language = **Rhai**
+- In-engine code editor deferred (follows Rhai runtime)
+- egui stays in `tools/` (never in the game crate)
 
 ## Non-goals (even for moonshot 1.0)
 
@@ -55,7 +60,8 @@ Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundli
 **M4** — done (editor undo/multi-select/prefabs/snap/Play polish)  
 **M5** — done (Reach 12-level / 3-chapter campaign)  
 **M6** — done (Surge timed + endless modes, 5 arenas; `games/showcase` trailer)  
-**M7** — done (site downloads → `v1.0.0-alpha.2` Reach macOS+Windows zips; tag-triggered `package-reach`)  
-**M8–M9** — not started
+**M7** — done (site downloads; Reach macOS+Windows zips; tag-triggered `package-reach`)  
+**M8** — done (Clippy CI, frustum cull, `MAX_INSTANCES=16384`, interactive ~10k cubes)  
+**M9** — done (**Kerabit 1.0.0** freeze, GitHub Release, site launch)
 
 See also [ARCHITECTURE.md](ARCHITECTURE.md), [API.md](API.md), and [README.md](README.md).

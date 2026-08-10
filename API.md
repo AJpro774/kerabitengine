@@ -2,27 +2,27 @@
 
 This document is the **stable target** for game-facing types. Changes require updating this file in the same change.
 
-> **Alpha `1.0.0-alpha.2`:** frozen vs experimental surfaces are listed below. wgpu / winit types are not part of the public surface.
+> **Kerabit `1.0.0`:** frozen vs experimental surfaces are listed below. wgpu / winit types are not part of the public surface.
 
-## Alpha freeze
+## 1.0 freeze
 
-Breaking a **Frozen for alpha** item requires a new alpha minor bump (`1.0.0-alpha.N` → next) and a [CHANGELOG.md](CHANGELOG.md) entry in the same change.
+Breaking a **Frozen for 1.0** item requires a semver bump and a [CHANGELOG.md](CHANGELOG.md) entry in the same change. Experimental surfaces may change without a major bump.
 
 | Surface | Status | Notes |
 |---------|--------|-------|
-| `Kerabit` | **Frozen for alpha** | `new` / `clear_color` / `spawn` / `camera` / `light` / `lights` / `ambient` / `scene` / `load_scene` / `run` |
-| `Entity` (spawn builder) | **Frozen for alpha** | `new` / `mesh` / `material` / `at` / `rotation` / `scale` / `parent` (+ M2 additive `tag` / `tags` / `layer` / `enabled`) |
-| `Mesh` | **Frozen for alpha** | `cube` / `plane` / `load_obj` |
-| `Material` | **Frozen for alpha** | `color` / `roughness` / `metallic` / texture + normal-map helpers (M1 additive) |
-| `Scene`, `SceneError`, `SCENE_VERSION`, `SceneMap` | **Frozen for alpha** | `.kerabit.json` load/save; additive `components`/`extras` / `metallic`; `into_kerabit` |
-| `Context` | **Frozen for alpha** | `dt` / `input` / `world` / `camera` / `physics` / `audio` / `ui` / `quit` / `apply_scene` / `load_scene` / spawn helpers; M1 `lights` / `set_lights` / `spawn_particles`; M3 `sync_audio_listener` |
-| `Ui` | **Frozen for alpha** | `text` / `rect` (normalized top-left coords) |
-| Physics (`PhysicsWorld`, `Aabb`, casts, `move_and_collide`) | **Frozen for alpha** + **M2 additive** | Static AABBs; dynamics + `CharacterController` additive |
+| `Kerabit` | **Frozen for 1.0** | `new` / `clear_color` / `spawn` / `camera` / `light` / `lights` / `ambient` / `scene` / `load_scene` / `run` |
+| `Entity` (spawn builder) | **Frozen for 1.0** | `new` / `mesh` / `material` / `at` / `rotation` / `scale` / `parent` (+ M2 additive `tag` / `tags` / `layer` / `enabled`) |
+| `Mesh` | **Frozen for 1.0** | `cube` / `plane` / `load_obj` |
+| `Material` | **Frozen for 1.0** | `color` / `roughness` / `metallic` / texture + normal-map helpers (M1 additive) |
+| `Scene`, `SceneError`, `SCENE_VERSION`, `SceneMap` | **Frozen for 1.0** | `.kerabit.json` load/save; additive `components`/`extras` / `metallic`; `into_kerabit` |
+| `Context` | **Frozen for 1.0** | `dt` / `input` / `world` / `camera` / `physics` / `audio` / `ui` / `quit` / `apply_scene` / `load_scene` / spawn helpers; M1 `lights` / `set_lights` / `spawn_particles`; M3 `sync_audio_listener` |
+| `Ui` | **Frozen for 1.0** | `text` / `rect` (normalized top-left coords) |
+| Physics (`PhysicsWorld`, `Aabb`, casts, `move_and_collide`) | **Frozen for 1.0** + **M2 additive** | Static AABBs; dynamics + `CharacterController` additive |
 | `kerabit-anim` (`AnimationClip`, `AnimationPlayer`) | **Additive (M2)** | Clip playback on hierarchy; glTF anim import stretch/minimal |
-| Audio (`AudioEngine`, `SoundId`) | **Frozen for alpha** + **M3 additive** | WAV play / volume / null fallback; spatial `play_at`, `MixBus`, streaming `play_music`, `AudioListener` |
-| Math / color (`Vec3`, `Quat`, `Color`, …) | **Frozen for alpha** | Via prelude |
-| `Camera`, `Light`, `LightKind`, `ParticleBurst`, `Key`, `InputState` | **Frozen for alpha** | View/light/particles + input; multi-light ≤4 (M1) |
-| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change without alpha bump. M4: undo/redo, multi-select, prefabs, snap persistence, polished child-process Play |
+| Audio (`AudioEngine`, `SoundId`) | **Frozen for 1.0** + **M3 additive** | WAV play / volume / null fallback; spatial `play_at`, `MixBus`, streaming `play_music`, `AudioListener` |
+| Math / color (`Vec3`, `Quat`, `Color`, …) | **Frozen for 1.0** | Via prelude |
+| `Camera`, `Light`, `LightKind`, `ParticleBurst`, `Key`, `InputState` | **Frozen for 1.0** | View/light/particles + input; multi-light ≤4 (M1) |
+| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change without a 1.0 patch. M4: undo/redo, multi-select, prefabs, snap persistence, polished child-process Play |
 | Surge motion tags (`orbit`, `slide_x`, `slide_z`) | **Experimental** | Game convention used by Surge; not a general engine contract |
 | Anything marked unstable / internal | **Experimental** | Do not depend on from published games without pinning |
 
@@ -249,7 +249,7 @@ No wgpu / winit types. No FreeType — glyphs come from an in-repo 8×8 atlas.
 
 ## Stability notes
 
-- **Alpha freeze:** see the table at the top of this file. Breaking frozen items needs a new alpha bump + CHANGELOG.
+- **1.0 freeze:** see the table at the top of this file. Breaking frozen items needs a semver bump + CHANGELOG. Experimental surfaces (editor UI, Surge motion tags) may change without a major bump.
 - Do not expand the public API without updating this file.
 - Examples must compile against the public API only.
 - wgpu leakage in public rustdoc is an accept-gate failure.

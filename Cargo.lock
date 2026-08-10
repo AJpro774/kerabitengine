@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "image",
@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-anim"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit-math",
  "kerabit-world",
@@ -1641,7 +1641,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-assets"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "gltf",
@@ -1655,7 +1655,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-audio"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit-math",
  "rodio",
@@ -1664,11 +1664,11 @@ dependencies = [
 
 [[package]]
 name = "kerabit-color"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 
 [[package]]
 name = "kerabit-editor"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "eframe",
  "egui",
@@ -1685,25 +1685,25 @@ dependencies = [
 
 [[package]]
 name = "kerabit-input"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 
 [[package]]
 name = "kerabit-math"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "glam",
 ]
 
 [[package]]
 name = "kerabit-physics"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit-math",
 ]
 
 [[package]]
 name = "kerabit-render"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1716,7 +1716,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-world"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit-math",
 ]
@@ -2630,7 +2630,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "reach"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit",
 ]
@@ -2892,7 +2892,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "showcase"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit",
 ]
@@ -3073,7 +3073,7 @@ dependencies = [
 
 [[package]]
 name = "surge"
-version = "1.0.0-alpha.2"
+version = "1.0.0"
 dependencies = [
  "kerabit",
 ]

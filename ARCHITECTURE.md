@@ -139,6 +139,9 @@ Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
 | M2 Simulation leap | **Done** | `kerabit-anim`; dynamics + character controller; enable/tags/layers; `physics_sandbox` |
 | M3 Audio leap | **Done** | Spatial `play_at`, mix buses, streaming music |
 | M4 Editor professional | **Done** | Undo/redo, multi-select, align, prefabs, snap persistence, polished Play |
+| M7 Product | **Done** | Docs site, Reach macOS+Windows zips, tag-triggered packaging |
+| M8 Hardening | **Done** | Clippy CI, frustum cull, 16k instances, ~10k cubes |
+| M9 Kerabit 1.0 | **Done** | Workspace `1.0.0`; GitHub Release; site launch |
 
 ## Deps
 

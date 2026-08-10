@@ -5,7 +5,7 @@ Kerabit is designed for **multi-model / multi-session** work: own a crate or a f
 ## Operating rules
 
 1. **Own a crate or a feature.** Prefer PRs/commits scoped to one clear change.
-2. **Do not expand or break the public API** without updating [API.md](API.md) in the same change. Breaking a **Frozen for alpha** item also needs a new alpha bump + [CHANGELOG.md](CHANGELOG.md) entry — see the freeze table in API.md.
+2. **Do not expand or break the public API** without updating [API.md](API.md) in the same change. Breaking a **Frozen for 1.0** item also needs a semver bump + [CHANGELOG.md](CHANGELOG.md) entry — see the freeze table in API.md.
 3. **Never expose `wgpu::*` or `winit::*`** from `kerabit`’s public surface (except a documented advanced module later).
 4. **Shaders** live in `crates/kerabit-render/shaders/` as `.wgsl`, included via `include_str!`.
 5. **Examples** must compile against the public API only.
