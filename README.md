@@ -100,7 +100,7 @@ Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit 
 cargo run -p reach
 ```
 
-Campaign of 12 levels across 3 chapters: title → chapter select → WASD to the cyan pad → avoid red hazards → CLEAR / RETRY. Levels live in `games/reach/levels/` (edit with `kerabit-editor`). Release packaging: `./scripts/package-reach.sh` / `package-reach-windows.ps1` (see **Play Reach** above).
+Campaign of 16 levels across 4 chapters: title → chapter select → WASD to the cyan pad → avoid red hazards → CLEAR / RETRY. Levels live in `games/reach/levels/` (edit with `kerabit-editor`). Release packaging: `./scripts/package-reach.sh` / `package-reach-windows.ps1` (see **Play Reach** above).
 
 ### Surge (score-attack)
 

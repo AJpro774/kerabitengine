@@ -130,7 +130,7 @@ Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
 | E2 Viewport / gizmos | **Done** | Offscreen lit viewport, ray AABB pick, T/R/S gizmos + snap |
 | E3 Entity tags | **Done** | Additive `tags` on scene entities; Reach roles via tags (+ name-prefix fallback) |
 | E4 More Reach content | **Done** | 5 tagged levels under `games/reach/levels/`; hard-but-fair dodge gaps |
-| M5 Reach campaign | **Done** | 12 levels / 3 chapters, best times, particles + spatial juice |
+| M5 Reach campaign | **Done** | 16 levels / 4 chapters, best times, particles + spatial juice |
 | E5 Engine depth | **Done** | Directional soft shadows (PCF) + sky gradient; single-sun authoring model |
 | E6 Ship Reach | **Done** | `scripts/package-reach.sh` → `dist/Reach.app` + zip; icon + Play docs |
 | E7 Second game | **Done** | `games/surge` score-attack vertical slice; 2 editor-openable arenas |

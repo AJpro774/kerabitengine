@@ -5,6 +5,12 @@ All notable changes to Kerabit are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Reach** — Summit (level 12) dodge path opened (posts blocked the only turns). Campaign is **16 levels / 4 chapters** (new **IV · Afterglow**: Needle, Fork, Wells, Crown).
+
 ## [1.0.0] — 2026-08-10
 
 Kerabit **1.0** — Summit ship. Install stays rustup + cargo. Reach player zips on GitHub Releases.

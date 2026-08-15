@@ -10,7 +10,7 @@
 //! **Controls**
 //! - WASD — move
 //! - Space — start / confirm / next level
-//! - ←/→ or 1–3 — chapter select
+//! - ←/→ or 1–4 — chapter select
 //! - R — retry after fail (or mid-run)
 //! - Escape — back / quit
 //!
@@ -37,6 +37,10 @@ const LEVEL_FILES: &[&str] = &[
     "10_rift.kerabit.json",
     "11_crucible.kerabit.json",
     "12_summit.kerabit.json",
+    "13_needle.kerabit.json",
+    "14_fork.kerabit.json",
+    "15_wells.kerabit.json",
+    "16_crown.kerabit.json",
 ];
 
 const LEVEL_NAMES: &[&str] = &[
@@ -52,6 +56,10 @@ const LEVEL_NAMES: &[&str] = &[
     "Rift",
     "Crucible",
     "Summit",
+    "Needle",
+    "Fork",
+    "Wells",
+    "Crown",
 ];
 
 struct Chapter {
@@ -77,6 +85,11 @@ const CHAPTERS: &[Chapter] = &[
         name: "III · Summit",
         start: 8,
         end: 12,
+    },
+    Chapter {
+        name: "IV · Afterglow",
+        start: 12,
+        end: 16,
     },
 ];
 
@@ -166,10 +179,12 @@ impl Progress {
             return None;
         }
         unlocked = unlocked.min(CHAPTERS.len().saturating_sub(1));
-        Some(Self {
+        let mut progress = Self {
             unlocked_chapter: unlocked,
             best,
-        })
+        };
+        progress.sync_unlocks();
+        Some(progress)
     }
 
     fn save(&self) {
@@ -204,12 +219,20 @@ impl Progress {
                 _ => {}
             }
         }
-        // Unlock next chapter when every level in the current chapter is cleared.
+        self.sync_unlocks();
+        improved
+    }
+
+    /// Unlock the next chapter when every level in an already-open chapter is cleared.
+    ///
+    /// Runs on load so a 12-level save that already finished Summit opens Afterglow.
+    fn sync_unlocks(&mut self) {
         for (ci, ch) in CHAPTERS.iter().enumerate() {
             if ci > self.unlocked_chapter {
                 break;
             }
-            let chapter_done = (ch.start..ch.end).all(|i| self.best.get(i).copied().flatten().is_some());
+            let chapter_done = (ch.start..ch.end)
+                .all(|i| self.best.get(i).copied().flatten().is_some());
             if chapter_done {
                 let next = (ci + 1).min(CHAPTERS.len().saturating_sub(1));
                 if next > self.unlocked_chapter {
@@ -217,7 +240,6 @@ impl Progress {
                 }
             }
         }
-        improved
     }
 
     fn chapter_best_sum(&self, chapter: usize) -> Option<f32> {
@@ -584,7 +606,7 @@ fn main() {
                         Color::WHITE,
                         title,
                     );
-                    let sub = "12 levels · 3 chapters";
+                    let sub = "16 levels · 4 chapters";
                     let ss = 0.028;
                     ctx.ui().text(
                         centered_x(sub, ss),
@@ -638,7 +660,7 @@ fn main() {
                             play_sfx(ctx, "ui.wav");
                         }
                     }
-                    for (i, key) in [Key::Digit1, Key::Digit2, Key::Digit3]
+                    for (i, key) in [Key::Digit1, Key::Digit2, Key::Digit3, Key::Digit4]
                         .into_iter()
                         .enumerate()
                     {
@@ -667,7 +689,7 @@ fn main() {
                     );
 
                     for (i, ch) in CHAPTERS.iter().enumerate() {
-                        let y = 0.30 + i as f32 * 0.14;
+                        let y = 0.26 + i as f32 * 0.13;
                         let locked = i > progress.unlocked_chapter;
                         let selected = i == chapter_cursor;
                         let label = if locked {
@@ -1404,14 +1426,15 @@ mod tests {
     }
 
     #[test]
-    fn campaign_has_ten_plus_levels_and_three_chapters() {
+    fn campaign_has_registered_levels_and_contiguous_chapters() {
         assert!(
             LEVEL_FILES.len() >= 10,
             "M5 accept: need at least 10 Reach levels, got {}",
             LEVEL_FILES.len()
         );
+        assert_eq!(LEVEL_FILES.len(), 16);
         assert_eq!(LEVEL_FILES.len(), LEVEL_NAMES.len());
-        assert_eq!(CHAPTERS.len(), 3);
+        assert_eq!(CHAPTERS.len(), 4);
         assert_eq!(CHAPTERS[0].start, 0);
         assert_eq!(CHAPTERS.last().unwrap().end, LEVEL_FILES.len());
         for w in CHAPTERS.windows(2) {
@@ -1456,6 +1479,129 @@ mod tests {
         }
     }
 
+    fn xz_overlap(ac: Vec3, ah: Vec3, bc: Vec3, bh: Vec3) -> bool {
+        (ac.x - bc.x).abs() <= ah.x + bh.x && (ac.z - bc.z).abs() <= ah.z + bh.z
+    }
+
+    fn off_platform(level: &Level, x: f32, z: f32) -> bool {
+        x.abs() > level.platform_half.x || z.abs() > level.platform_half.y
+    }
+
+    fn in_hazard(level: &Level, x: f32, z: f32) -> bool {
+        let pos = Vec3::new(x, 0.0, z);
+        level
+            .hazards
+            .iter()
+            .any(|h| xz_overlap(pos, level.player_half, h.center, h.half))
+    }
+
+    fn in_wall(level: &Level, x: f32, z: f32) -> bool {
+        let pos = Vec3::new(x, 0.0, z);
+        level
+            .walls
+            .iter()
+            .any(|&(c, h)| xz_overlap(pos, level.player_half, c, h))
+    }
+
+    fn player_blocked(level: &Level, x: f32, z: f32) -> bool {
+        off_platform(level, x, z) || in_wall(level, x, z) || in_hazard(level, x, z)
+    }
+
+    fn touches_goal(level: &Level, x: f32, z: f32) -> bool {
+        xz_overlap(
+            Vec3::new(x, 0.0, z),
+            level.player_half,
+            level.goal_center,
+            level.goal_half,
+        )
+    }
+
+    /// Grid walk from spawn to the goal AABB, treating walls / hazards / the void as blocked.
+    fn has_walkable_path(level: &Level) -> bool {
+        const STEP: f32 = 0.1;
+        let sx = level.player_start.x;
+        let sz = level.player_start.z;
+        if off_platform(level, sx, sz) || in_hazard(level, sx, sz) {
+            return false;
+        }
+        if touches_goal(level, sx, sz) {
+            return true;
+        }
+        // If spawn clips a wall (common on outer rails), start from the nearest free cell.
+        let (sx, sz) = {
+            let mut found = None;
+            'search: for r in 0i32..=12 {
+                for ix in -r..=r {
+                    for iz in -r..=r {
+                        if ix.abs().max(iz.abs()) != r {
+                            continue;
+                        }
+                        let x = sx + ix as f32 * STEP;
+                        let z = sz + iz as f32 * STEP;
+                        if !player_blocked(level, x, z) {
+                            found = Some((x, z));
+                            break 'search;
+                        }
+                    }
+                }
+            }
+            match found {
+                Some(p) => p,
+                None => return false,
+            }
+        };
+        if touches_goal(level, sx, sz) {
+            return true;
+        }
+        let mut vis = std::collections::HashSet::new();
+        let mut q = std::collections::VecDeque::new();
+        q.push_back((0i32, 0i32));
+        vis.insert((0, 0));
+        const DIRS: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        while let Some((ix, iz)) = q.pop_front() {
+            for (dx, dz) in DIRS {
+                let nix = ix + dx;
+                let niz = iz + dz;
+                if !vis.insert((nix, niz)) {
+                    continue;
+                }
+                let nx = sx + nix as f32 * STEP;
+                let nz = sz + niz as f32 * STEP;
+                if player_blocked(level, nx, nz) {
+                    continue;
+                }
+                if touches_goal(level, nx, nz) {
+                    return true;
+                }
+                q.push_back((nix, niz));
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn all_levels_are_walkable() {
+        for file in LEVEL_FILES {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("levels")
+                .join(file);
+            let scene = Scene::load(&path).unwrap_or_else(|e| panic!("load {file}: {e}"));
+            let level = Level::from_scene(&scene);
+            assert!(
+                !off_platform(&level, level.player_start.x, level.player_start.z),
+                "{file}: player spawn is off the platform"
+            );
+            assert!(
+                !in_hazard(&level, level.player_start.x, level.player_start.z),
+                "{file}: player spawn overlaps a hazard"
+            );
+            assert!(
+                has_walkable_path(&level),
+                "{file}: no WASD path from spawn to goal (unit cube vs walls/hazards/void)"
+            );
+        }
+    }
+
     #[test]
     fn progress_parse_roundtrip() {
         let text = "\
@@ -1480,6 +1626,16 @@ best 3 20.125
         }
         assert_eq!(p.unlocked_chapter, 1);
         assert!(p.chapter_best_sum(0).is_some());
+    }
+
+    #[test]
+    fn finished_summit_save_unlocks_afterglow() {
+        let mut text = String::from("v1\nunlock 2\n");
+        for i in 0..12 {
+            text.push_str(&format!("best {i} 10.0\n"));
+        }
+        let p = Progress::parse(&text).expect("parse");
+        assert_eq!(p.unlocked_chapter, 3);
     }
 
     #[test]

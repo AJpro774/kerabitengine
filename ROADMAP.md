@@ -15,7 +15,7 @@ Moonshot plan to level Kerabit into a serious tiny-engine competitor for small t
 | **M2** — Simulation | `kerabit-anim`, dynamics + character controller, entity queries | Unit tests + `physics_sandbox`; Reach optional controller |
 | **M3** — Audio | Spatial attenuation, mix buses, streaming music | Surge/Reach spatial cues; null-safe without a device |
 | **M4** — Editor | In-viewport play, undo, multi-select, prefabs | Author a Reach level entirely in the editor |
-| **M5** — Reach campaign | 10+ levels, chapters, juice | **Done** — 12 levels / 3 chapters; `cargo run -p reach` |
+| **M5** — Reach campaign | 10+ levels, chapters, juice | **Done** — 16 levels / 4 chapters; `cargo run -p reach` |
 | **M6** — Surge + Showcase | Surge modes + `games/showcase` trailer scene | **Done** — timed + endless; `cargo run -p showcase` |
 | **M7** — Product | Docs site, downloads, Windows packaging | Stranger: site → clone → hello → editor in &lt; 30 min |
 | **M8** — Hardening | Clippy CI, frustum cull, 10k cube perf, bug sweep | Interactive 10k cubes; no known P0s |
@@ -58,7 +58,7 @@ Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundli
 **M2** — done (`kerabit-anim`, dynamics + character controller, entity queries, `physics_sandbox`)  
 **M3** — done (spatial audio, buses, music stream)  
 **M4** — done (editor undo/multi-select/prefabs/snap/Play polish)  
-**M5** — done (Reach 12-level / 3-chapter campaign)  
+**M5** — done (Reach 16-level / 4-chapter campaign)  
 **M6** — done (Surge timed + endless modes, 5 arenas; `games/showcase` trailer)  
 **M7** — done (site downloads; Reach macOS+Windows zips; tag-triggered `package-reach`)  
 **M8** — done (Clippy CI, frustum cull, `MAX_INSTANCES=16384`, interactive ~10k cubes)  

@@ -1,25 +1,25 @@
 {
   "version": 1,
-  "clear_color": [0.06, 0.07, 0.12],
-  "ambient": [0.12, 0.13, 0.17],
+  "clear_color": [0.07, 0.08, 0.13],
+  "ambient": [0.13, 0.14, 0.18],
   "camera": {
-    "fov_y": 52.0,
-    "eye": [0.0, 10.0, 11.0],
+    "fov_y": 54.0,
+    "eye": [0.0, 10.0, 12.0],
     "target": [0.0, 0.4, 0.0],
     "near": 0.1,
     "far": 100.0
   },
   "light": {
-    "direction": [-0.4, -1.0, -0.2],
-    "intensity": 1.35,
-    "color": [1.0, 0.97, 0.92]
+    "direction": [-0.35, -1.0, -0.28],
+    "intensity": 1.26,
+    "color": [1.0, 0.97, 0.94]
   },
   "entities": [
     {
       "name": "ground",
       "tags": ["ground"],
       "mesh": { "type": "plane", "size": 14.0 },
-      "material": { "color": [0.3, 0.32, 0.38], "roughness": 0.92 },
+      "material": { "color": [0.32, 0.34, 0.4], "roughness": 0.92 },
       "at": [0.0, 0.0, 0.0]
     },
     {
@@ -27,14 +27,14 @@
       "tags": ["player"],
       "mesh": { "type": "cube" },
       "material": { "color": [0.32, 0.86, 0.48], "roughness": 0.4 },
-      "at": [-5.0, 0.5, 4.2]
+      "at": [-5.2, 0.5, 0.0]
     },
     {
       "name": "rail_s",
       "tags": ["wall"],
       "mesh": { "type": "cube" },
       "material": { "color": [1.0, 0.55, 0.12], "roughness": 0.55 },
-      "at": [0.0, 0.75, 5.5],
+      "at": [0.0, 0.75, 5.8],
       "scale": [13.0, 1.5, 0.4]
     },
     {
@@ -42,79 +42,55 @@
       "tags": ["wall"],
       "mesh": { "type": "cube" },
       "material": { "color": [0.95, 0.5, 0.15], "roughness": 0.55 },
-      "at": [0.0, 0.75, -5.5],
+      "at": [0.0, 0.75, -5.8],
       "scale": [13.0, 1.5, 0.4]
     },
     {
-      "name": "div_a",
+      "name": "spine",
       "tags": ["wall"],
       "mesh": { "type": "cube" },
-      "material": { "color": [0.98, 0.53, 0.14], "roughness": 0.55 },
-      "at": [2.0, 0.75, 2.4],
-      "scale": [7.2, 1.5, 0.4]
+      "material": { "color": [0.97, 0.52, 0.14], "roughness": 0.55 },
+      "at": [0.0, 0.75, 0.0],
+      "scale": [0.45, 1.5, 6.8]
     },
     {
-      "name": "div_b",
-      "tags": ["wall"],
-      "mesh": { "type": "cube" },
-      "material": { "color": [0.94, 0.5, 0.13], "roughness": 0.55 },
-      "at": [-2.0, 0.75, -0.2],
-      "scale": [7.2, 1.5, 0.4]
-    },
-    {
-      "name": "div_c",
-      "tags": ["wall"],
-      "mesh": { "type": "cube" },
-      "material": { "color": [0.96, 0.52, 0.14], "roughness": 0.55 },
-      "at": [2.0, 0.75, -2.8],
-      "scale": [7.2, 1.5, 0.4]
-    },
-    {
-      "name": "hz_a",
+      "name": "hz_split",
       "tags": ["hazard"],
       "mesh": { "type": "cube" },
       "material": { "color": [0.9, 0.12, 0.18], "roughness": 0.65 },
-      "at": [0.6, 0.45, 4.15],
+      "at": [-3.2, 0.45, 0.0],
       "scale": [0.55, 0.9, 0.55]
     },
     {
-      "name": "hz_b",
+      "name": "hz_north_a",
       "tags": ["hazard"],
       "mesh": { "type": "cube" },
       "material": { "color": [0.85, 0.1, 0.22], "roughness": 0.65 },
-      "at": [3.4, 0.45, 3.5],
-      "scale": [0.55, 0.9, 0.55]
-    },
-    {
-      "name": "hz_c",
-      "tags": ["hazard"],
-      "mesh": { "type": "cube" },
-      "material": { "color": [0.88, 0.11, 0.2], "roughness": 0.65 },
-      "at": [-2.4, 0.45, 1.1],
-      "scale": [0.55, 0.9, 0.55]
-    },
-    {
-      "name": "hz_d",
-      "tags": ["hazard"],
-      "mesh": { "type": "cube" },
-      "material": { "color": [0.92, 0.14, 0.16], "roughness": 0.65 },
-      "at": [2.4, 0.45, -1.5],
-      "scale": [0.55, 0.9, 0.55]
-    },
-    {
-      "name": "hz_e",
-      "tags": ["hazard"],
-      "mesh": { "type": "cube" },
-      "material": { "color": [0.8, 0.08, 0.24], "roughness": 0.65 },
-      "at": [-2.6, 0.45, -4.2],
+      "at": [-2.4, 0.45, -3.75],
       "scale": [0.5, 0.9, 0.5]
     },
     {
-      "name": "hz_f",
+      "name": "hz_north_b",
       "tags": ["hazard"],
       "mesh": { "type": "cube" },
-      "material": { "color": [0.86, 0.1, 0.2], "roughness": 0.65 },
-      "at": [1.2, 0.45, -4.5],
+      "material": { "color": [0.88, 0.11, 0.2], "roughness": 0.65 },
+      "at": [2.4, 0.45, -3.75],
+      "scale": [0.5, 0.9, 0.5]
+    },
+    {
+      "name": "hz_south_a",
+      "tags": ["hazard"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.92, 0.14, 0.16], "roughness": 0.65 },
+      "at": [-2.4, 0.45, 3.75],
+      "scale": [0.5, 0.9, 0.5]
+    },
+    {
+      "name": "hz_south_b",
+      "tags": ["hazard"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.8, 0.08, 0.24], "roughness": 0.65 },
+      "at": [2.4, 0.45, 3.75],
       "scale": [0.5, 0.9, 0.5]
     },
     {
@@ -122,7 +98,7 @@
       "tags": ["goal"],
       "mesh": { "type": "cube" },
       "material": { "color": [0.15, 0.85, 0.9], "roughness": 0.25 },
-      "at": [4.8, 0.3, -4.5],
+      "at": [5.2, 0.3, 0.0],
       "scale": [1.4, 0.6, 1.4]
     }
   ]
