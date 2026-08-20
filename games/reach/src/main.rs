@@ -1,18 +1,18 @@
-//! Reach — Kerabit flagship campaign.
+//! Reach - Kerabit flagship campaign.
 //!
-//! Title → chapter select → play → clear / fail → next level or retry.
+//! Title > chapter select > play > clear / fail > next level or retry.
 //! HUD and juice via the public Kerabit API only (`ctx.ui()`, camera lerp,
 //! squash, particles, spatial SFX).
 //!
 //! Level transitions use mid-run [`Context::apply_scene`] (same window / GPU /
-//! EventLoop) — no App teardown between levels.
+//! EventLoop) - no App teardown between levels.
 //!
 //! **Controls**
-//! - WASD — move
-//! - Space — start / confirm / next level
-//! - ←/→ or 1–4 — chapter select
-//! - R — retry after fail (or mid-run)
-//! - Escape — back / quit
+//! - WASD - move
+//! - Space - start / confirm / next level
+//! - Left/Right or 1-4 - chapter select
+//! - R - retry after fail (or mid-run)
+//! - Escape - back / quit
 //!
 //! ```bash
 //! cargo run -p reach
@@ -72,22 +72,22 @@ struct Chapter {
 
 const CHAPTERS: &[Chapter] = &[
     Chapter {
-        name: "I · Approach",
+        name: "I * Approach",
         start: 0,
         end: 4,
     },
     Chapter {
-        name: "II · Pressure",
+        name: "II * Pressure",
         start: 4,
         end: 8,
     },
     Chapter {
-        name: "III · Summit",
+        name: "III * Summit",
         start: 8,
         end: 12,
     },
     Chapter {
-        name: "IV · Afterglow",
+        name: "IV * Afterglow",
         start: 12,
         end: 16,
     },
@@ -118,7 +118,7 @@ struct Level {
     goal_center: Vec3,
     goal_half: Vec3,
     goal_base_scale: Vec3,
-    /// Half-extents of the safe platform on XZ (leave → fail).
+    /// Half-extents of the safe platform on XZ (leave > fail).
     platform_half: Vec2,
     cam_eye_offset: Vec3,
     cam_height: f32,
@@ -280,7 +280,7 @@ fn chapter_for_level(level_index: usize) -> usize {
 /// Data root for `levels/` and `assets/`.
 ///
 /// Resolution order (first hit with a `levels/` directory wins):
-/// 1. macOS `.app` → `Contents/Resources` next to `Contents/MacOS/<exe>`
+/// 1. macOS `.app` > `Contents/Resources` next to `Contents/MacOS/<exe>`
 /// 2. Directory containing the executable (flat release zip)
 /// 3. `CARGO_MANIFEST_DIR` (`cargo run` / `cargo test`)
 fn root_dir() -> PathBuf {
@@ -513,6 +513,8 @@ fn main() {
     let mut cam_target = level.player_start;
     cam_target.y = 0.4;
     let mut velocity_xz = Vec2::ZERO;
+    let mut wish_smooth = Vec3::ZERO;
+    let mut fail_reason = "Hazard";
     let mut clear_time = 0.0f32;
     let mut clear_improved = false;
     let mut all_clear = false;
@@ -565,9 +567,9 @@ fn main() {
                 cam.target = cam_target;
             }
 
-            // Decay juice.
-            squash = (squash - dt * 4.0).max(0.0);
-            flash = (flash - dt * 2.2).max(0.0);
+            // Decay juice (slightly sticky for punchier feel).
+            squash = (squash - dt * 3.5).max(0.0);
+            flash = (flash - dt * 1.8).max(0.0);
 
             match phase {
                 Phase::Title => {
@@ -595,33 +597,42 @@ fn main() {
                         0.0,
                         1.0,
                         1.0,
-                        Color::rgba(0.02, 0.03, 0.06, 0.55),
+                        Color::rgba(0.10, 0.09, 0.08, 0.58),
                     );
                     let title_size = 0.09;
                     let title = "REACH";
                     ctx.ui().text(
                         centered_x(title, title_size),
-                        0.32,
+                        0.28,
                         title_size,
                         Color::WHITE,
                         title,
                     );
-                    let sub = "16 levels · 4 chapters";
+                    let pitch = "Dodge the red. Hit the cyan pad.";
+                    let ps = 0.024;
+                    ctx.ui().text(
+                        centered_x(pitch, ps),
+                        0.40,
+                        ps,
+                        Color::rgb(0.72, 0.66, 0.58),
+                        pitch,
+                    );
+                    let sub = "16 levels * 4 chapters";
                     let ss = 0.028;
                     ctx.ui().text(
                         centered_x(sub, ss),
-                        0.44,
+                        0.46,
                         ss,
-                        Color::rgb(0.7, 0.78, 0.88),
+                        Color::rgb(0.91, 1.0, 0.29),
                         sub,
                     );
                     let hint = "Press Space";
                     let hint_size = 0.035;
                     ctx.ui().text(
                         centered_x(hint, hint_size),
-                        0.54,
+                        0.56,
                         hint_size,
-                        Color::rgb(0.75, 0.78, 0.85),
+                        Color::rgb(0.86, 0.80, 0.72),
                         hint,
                     );
 
@@ -676,68 +687,68 @@ fn main() {
                         0.0,
                         1.0,
                         1.0,
-                        Color::rgba(0.02, 0.03, 0.07, 0.62),
+                        Color::rgba(0.10, 0.09, 0.08, 0.64),
                     );
                     let header = "CHAPTERS";
-                    let hs = 0.06;
+                    let hs = 0.055;
                     ctx.ui().text(
                         centered_x(header, hs),
-                        0.14,
+                        0.12,
                         hs,
                         Color::WHITE,
                         header,
                     );
 
                     for (i, ch) in CHAPTERS.iter().enumerate() {
-                        let y = 0.26 + i as f32 * 0.13;
+                        let y = 0.24 + i as f32 * 0.125;
                         let locked = i > progress.unlocked_chapter;
                         let selected = i == chapter_cursor;
                         let label = if locked {
-                            format!("{}  — locked", ch.name)
+                            format!("{}  - locked", ch.name)
                         } else if selected {
                             format!("> {} <", ch.name)
                         } else {
                             ch.name.to_string()
                         };
                         let color = if locked {
-                            Color::rgb(0.4, 0.42, 0.48)
+                            Color::rgb(0.42, 0.38, 0.34)
                         } else if selected {
-                            Color::rgb(0.35, 0.95, 0.85)
+                            Color::rgb(0.91, 1.0, 0.29)
                         } else {
-                            Color::rgb(0.8, 0.84, 0.9)
+                            Color::rgb(0.86, 0.80, 0.72)
                         };
-                        let size = if selected { 0.036 } else { 0.032 };
+                        let size = if selected { 0.034 } else { 0.030 };
                         ctx.ui()
                             .text(centered_x(&label, size), y, size, color, &label);
 
                         if !locked {
                             let detail = match progress.chapter_best_sum(i) {
                                 Some(sum) => format!(
-                                    "Lv {}–{}  ·  best {:.1}s",
+                                    "Lv {}-{}  *  best {:.1}s",
                                     ch.start + 1,
                                     ch.end,
                                     sum
                                 ),
-                                None => format!("Lv {}–{}", ch.start + 1, ch.end),
+                                None => format!("Lv {}-{}", ch.start + 1, ch.end),
                             };
-                            let ds = 0.022;
+                            let ds = 0.020;
                             ctx.ui().text(
                                 centered_x(&detail, ds),
-                                y + 0.045,
+                                y + 0.042,
                                 ds,
-                                Color::rgb(0.55, 0.6, 0.68),
+                                Color::rgb(0.55, 0.50, 0.44),
                                 &detail,
                             );
                         }
                     }
 
-                    let prompt = "←/→ select   Space start   Esc back";
+                    let prompt = "Left/Right select   Space start   Esc back";
                     let ps = 0.024;
                     ctx.ui().text(
                         centered_x(prompt, ps),
                         0.88,
                         ps,
-                        Color::rgb(0.65, 0.7, 0.78),
+                        Color::rgb(0.65, 0.60, 0.54),
                         prompt,
                     );
 
@@ -762,6 +773,7 @@ fn main() {
                             &mut physics_ready,
                             &mut level_index,
                         );
+                        wish_smooth = Vec3::ZERO;
                         squash = 0.35;
                     }
                 }
@@ -780,6 +792,7 @@ fn main() {
                             &mut flash,
                             &mut velocity_xz,
                         );
+                        wish_smooth = Vec3::ZERO;
                         play_sfx(ctx, "ui.wav");
                     }
 
@@ -797,15 +810,28 @@ fn main() {
                     if ctx.input().key_down(Key::D) {
                         wish.x += 1.0;
                     }
-                    let result = controller.move_planar(ctx.physics(), wish, speed, dt);
+                    if wish.length_squared() > 1.0 {
+                        wish = wish.normalize();
+                    }
+                    // Smooth starts/stops/turns without changing CharacterController.
+                    let blend = (1.0 - (-14.0 * dt).exp()).clamp(0.0, 1.0);
+                    wish_smooth = wish_smooth.lerp(wish, blend);
+                    let mag = wish_smooth.length().min(1.0);
+                    let dir = if mag > 1e-4 {
+                        wish_smooth / mag
+                    } else {
+                        Vec3::ZERO
+                    };
+                    let result =
+                        controller.move_planar(ctx.physics(), dir, speed * mag, dt);
                     player_pos = result.position;
                     velocity_xz = Vec2::new(controller.velocity.x, controller.velocity.z);
 
                     if result.hit && velocity_xz.length_squared() > 0.01 {
-                        squash = squash.max(0.45);
+                        squash = squash.max(0.55);
                         if bump_cd <= 0.0 {
                             burst_bump(ctx, player_pos);
-                            bump_cd = 0.18;
+                            bump_cd = 0.16;
                         }
                     }
 
@@ -824,7 +850,7 @@ fn main() {
                         player_pos,
                         velocity_xz,
                         dt,
-                        6.0,
+                        7.5,
                     );
 
                     let player_aabb =
@@ -842,9 +868,11 @@ fn main() {
 
                     if hit_hazard || off_platform {
                         phase = Phase::Failed;
+                        fail_reason = if hit_hazard { "Hazard" } else { "Fell" };
                         squash = 0.85;
                         flash = 1.0;
                         flash_color = Color::rgb(0.95, 0.12, 0.15);
+                        wish_smooth = Vec3::ZERO;
                         play_sfx_at(ctx, "fail.wav", player_pos);
                         burst_fail(ctx, player_pos);
                     } else if hit_goal {
@@ -855,7 +883,8 @@ fn main() {
                         all_clear = level_index + 1 >= LEVEL_FILES.len();
                         squash = 0.7;
                         flash = 0.85;
-                        flash_color = Color::rgb(0.2, 0.95, 0.85);
+                        flash_color = Color::rgb(0.91, 1.0, 0.29);
+                        wish_smooth = Vec3::ZERO;
                         play_sfx_at(ctx, "win.wav", level.goal_center);
                         burst_win(ctx, level.goal_center);
                     }
@@ -884,7 +913,7 @@ fn main() {
                         0.0,
                         1.0,
                         1.0,
-                        Color::rgba(0.02, 0.08, 0.1, 0.45),
+                        Color::rgba(0.10, 0.09, 0.08, 0.50),
                     );
 
                     let headline = if all_clear {
@@ -895,20 +924,20 @@ fn main() {
                     let hs = if all_clear { 0.065 } else { 0.08 };
                     ctx.ui().text(
                         centered_x(headline, hs),
-                        0.30,
+                        0.28,
                         hs,
-                        Color::rgb(0.35, 1.0, 0.9),
+                        Color::rgb(0.91, 1.0, 0.29),
                         headline,
                     );
                     let time_line = if clear_improved {
-                        format!("Time {clear_time:.2}s  ·  new best!")
+                        format!("Time {clear_time:.2}s  *  new best!")
                     } else {
                         format!("Time {clear_time:.2}s")
                     };
                     let ts = 0.032;
                     ctx.ui().text(
                         centered_x(&time_line, ts),
-                        0.42,
+                        0.40,
                         ts,
                         Color::WHITE,
                         &time_line,
@@ -918,24 +947,27 @@ fn main() {
                         let bs = 0.026;
                         ctx.ui().text(
                             centered_x(&best_line, bs),
-                            0.48,
+                            0.46,
                             bs,
-                            Color::rgb(0.7, 0.85, 0.9),
+                            Color::rgb(0.72, 0.66, 0.58),
                             &best_line,
                         );
                     }
+                    let next_name = LEVEL_NAMES.get(level_index + 1).copied();
                     let prompt = if all_clear {
-                        "Space — chapters"
+                        "Space - chapters".to_string()
+                    } else if let Some(name) = next_name {
+                        format!("Space - next: {name}")
                     } else {
-                        "Space — next level"
+                        "Space - next level".to_string()
                     };
-                    let ps = 0.03;
+                    let ps = 0.028;
                     ctx.ui().text(
-                        centered_x(prompt, ps),
-                        0.58,
+                        centered_x(&prompt, ps),
+                        0.56,
                         ps,
-                        Color::rgb(0.75, 0.8, 0.88),
-                        prompt,
+                        Color::rgb(0.86, 0.80, 0.72),
+                        &prompt,
                     );
 
                     if ctx.input().key_pressed(Key::Space) {
@@ -959,6 +991,8 @@ fn main() {
                             &mut physics_ready,
                         ) {
                             phase = Phase::ChapterSelect;
+                        } else {
+                            wish_smooth = Vec3::ZERO;
                         }
                     }
                 }
@@ -982,24 +1016,33 @@ fn main() {
                         0.0,
                         1.0,
                         1.0,
-                        Color::rgba(0.25, 0.02, 0.04, 0.5),
+                        Color::rgba(0.18, 0.06, 0.05, 0.55),
                     );
                     let retry = "RETRY";
                     let rs = 0.09;
                     ctx.ui().text(
                         centered_x(retry, rs),
-                        0.38,
+                        0.32,
                         rs,
                         Color::rgb(1.0, 0.35, 0.35),
                         retry,
+                    );
+                    let reason = fail_reason;
+                    let rsz = 0.030;
+                    ctx.ui().text(
+                        centered_x(reason, rsz),
+                        0.44,
+                        rsz,
+                        Color::rgb(0.95, 0.75, 0.65),
+                        reason,
                     );
                     let prompt = "Space / R";
                     let ps = 0.035;
                     ctx.ui().text(
                         centered_x(prompt, ps),
-                        0.52,
+                        0.54,
                         ps,
-                        Color::rgb(0.9, 0.85, 0.85),
+                        Color::rgb(0.90, 0.82, 0.76),
                         prompt,
                     );
 
@@ -1016,6 +1059,7 @@ fn main() {
                             &mut flash,
                             &mut velocity_xz,
                         );
+                        wish_smooth = Vec3::ZERO;
                     }
                 }
             }
@@ -1103,7 +1147,7 @@ fn follow_camera(
     speed: f32,
 ) {
     // Third-person follow: elevated chase cam with light look-ahead.
-    let look_ahead = Vec3::new(velocity_xz.x, 0.0, velocity_xz.y) * 0.4;
+    let look_ahead = Vec3::new(velocity_xz.x, 0.0, velocity_xz.y) * 0.55;
     let desired_target = Vec3::new(player_pos.x, 0.45, player_pos.z) + look_ahead;
     let mut desired_eye = desired_target + level.cam_eye_offset;
     desired_eye.y = level.cam_height;
@@ -1133,25 +1177,41 @@ fn draw_hud(ctx: &mut Context<'_>, level_index: usize, elapsed: f32, progress: &
     let ch_name = CHAPTERS[ch].name;
     let level_name = LEVEL_NAMES.get(level_index).copied().unwrap_or("?");
     let level_line = format!(
-        "{}  ·  {}/{}  {}",
+        "{}  *  {}/{}  {}",
         ch_name,
         level_index + 1,
         LEVEL_FILES.len(),
         level_name
     );
     let time_line = match progress.best.get(level_index).copied().flatten() {
-        Some(best) => format!("{elapsed:.1}s  ·  best {best:.1}s"),
+        Some(best) => format!("{elapsed:.1}s  *  best {best:.1}s"),
         None => format!("{elapsed:.1}s"),
     };
     ctx.ui()
-        .text(0.03, 0.03, 0.024, Color::rgb(0.9, 0.92, 0.95), &level_line);
+        .text(0.03, 0.03, 0.024, Color::rgb(0.93, 0.90, 0.84), &level_line);
     ctx.ui()
-        .text(0.03, 0.07, 0.026, Color::rgb(0.75, 0.9, 0.95), &time_line);
+        .text(0.03, 0.07, 0.026, Color::rgb(0.91, 1.0, 0.29), &time_line);
+
+    // Chapter pips (filled = current or earlier in campaign).
+    let pip_y = 0.115;
+    let pip_size = 0.018;
+    for i in 0..CHAPTERS.len() {
+        let x = 0.03 + i as f32 * 0.028;
+        let filled = i <= ch;
+        let color = if filled {
+            Color::rgb(0.91, 1.0, 0.29)
+        } else {
+            Color::rgb(0.40, 0.36, 0.32)
+        };
+        let mark = if filled { "#" } else { "-" };
+        ctx.ui().text(x, pip_y, pip_size, color, mark);
+    }
+
     ctx.ui().text(
         0.03,
         0.94,
         0.02,
-        Color::rgb(0.65, 0.68, 0.74),
+        Color::rgb(0.60, 0.55, 0.48),
         "WASD move  R retry  Esc chapters",
     );
 }

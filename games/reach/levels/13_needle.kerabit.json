@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "clear_color": [0.08, 0.07, 0.13],
-  "ambient": [0.13, 0.13, 0.18],
+  "clear_color": [0.09, 0.05, 0.11],
+  "ambient": [0.13, 0.11, 0.16],
   "camera": {
     "fov_y": 52.0,
     "eye": [0.0, 9.0, 10.5],
@@ -10,16 +10,16 @@
     "far": 100.0
   },
   "light": {
-    "direction": [-0.45, -1.0, -0.15],
+    "direction": [-0.42, -1.0, -0.18],
     "intensity": 1.28,
-    "color": [1.0, 0.96, 0.94]
+    "color": [1.0, 0.9, 0.95]
   },
   "entities": [
     {
       "name": "ground",
       "tags": ["ground"],
       "mesh": { "type": "plane", "size": 12.0 },
-      "material": { "color": [0.31, 0.32, 0.38], "roughness": 0.92 },
+      "material": { "color": [0.3, 0.28, 0.36], "roughness": 0.92 },
       "at": [0.0, 0.0, 0.0]
     },
     {
