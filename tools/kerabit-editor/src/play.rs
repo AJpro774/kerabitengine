@@ -7,25 +7,17 @@
 
 use std::path::Path;
 
-use kerabit::{Color, Key, MouseButton, Scene, Vec3};
+use kerabit::{Color, Kerabit, Key, MouseButton, Vec3};
 
 /// Load `path` and open a Kerabit play window until Escape / close.
 pub fn run(path: &Path) {
-    let scene = match Scene::load(path) {
-        Ok(s) => s,
-        Err(err) => {
-            eprintln!("kerabit-editor play: failed to load {}: {err}", path.display());
-            std::process::exit(1);
-        }
-    };
-
     let name = path
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("scene");
     let title = format!("Kerabit Play — {name}");
 
-    let kerabit = match scene.into_kerabit(title) {
+    let kerabit = match Kerabit::new(title).load_scene(path) {
         Ok(k) => k,
         Err(err) => {
             eprintln!("kerabit-editor play: {err}");
@@ -37,6 +29,16 @@ pub fn run(path: &Path) {
         if ctx.input().key_pressed(Key::Escape) {
             ctx.quit();
             return;
+        }
+
+        if let Some(err) = ctx.script_error().map(str::to_owned) {
+            ctx.ui().text(
+                0.02,
+                0.09,
+                0.024,
+                Color::rgb(1.0, 0.35, 0.3),
+                &err,
+            );
         }
 
         // Light orbit / pan so authors can inspect the lit scene.
@@ -92,12 +94,14 @@ pub fn run(path: &Path) {
             cam.target += delta;
         }
 
+        // Corner HUD — site lime accent (normalized 0–1 coords).
+        ctx.ui().rect(0.0, 0.0, 0.48, 0.07, Color::rgba(0.10, 0.09, 0.08, 0.72));
         ctx.ui().text(
-            16.0,
-            16.0,
-            18.0,
-            Color::WHITE,
-            "Playing — Esc / close to return (selection kept in editor)",
+            0.02,
+            0.022,
+            0.028,
+            Color::rgb(0.91, 1.0, 0.29),
+            "PLAY  -  Esc returns to editor (scripts auto-reload on save)",
         );
     });
 }

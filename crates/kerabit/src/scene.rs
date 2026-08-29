@@ -13,6 +13,7 @@ use crate::entity::Entity;
 use crate::material::Material;
 use crate::mesh::Mesh;
 use crate::Kerabit;
+use kerabit_script::ScriptRuntime;
 
 /// Errors from loading or saving a [`.kerabit.json`](Scene) file.
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +28,8 @@ pub enum SceneError {
     Asset(#[from] kerabit_assets::AssetError),
     #[error("spawn error: {0}")]
     Spawn(String),
+    #[error("script error: {0}")]
+    Script(String),
 }
 
 /// Current `.kerabit.json` format version.
@@ -89,6 +92,34 @@ pub struct SceneEntity {
     pub components: SceneMap,
     /// Reserved per-entity extras bag (tooling / forward-compat). Empty today.
     pub extras: SceneMap,
+}
+
+impl Scene {
+    /// Script files attached via `extras.script` or `components.script`.
+    ///
+    /// Each item is `(relative path, optional entity name)`. A `None` entity is
+    /// a scene-level script; otherwise `self` in Rhai is that entity's name.
+    pub fn script_attachments(&self) -> Vec<(String, Option<String>)> {
+        let mut out = Vec::new();
+        if let Some(p) = map_script_path(&self.extras).or_else(|| map_script_path(&self.components))
+        {
+            out.push((p, None));
+        }
+        for e in &self.entities {
+            if let Some(p) = map_script_path(&e.extras).or_else(|| map_script_path(&e.components)) {
+                out.push((p, Some(e.name.clone())));
+            }
+        }
+        out
+    }
+}
+
+/// Read `"script"` from a reserved JSON bag.
+pub fn map_script_path(map: &SceneMap) -> Option<String> {
+    map.get("script")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 /// Mesh primitive or asset path (mirrors [`Mesh`] builders).
@@ -374,9 +405,38 @@ impl Kerabit {
     }
 
     /// Load `.kerabit.json` from `path` and apply it (see [`Kerabit::scene`]).
+    ///
+    /// Also compiles `extras.script` / `components.script` paths relative to
+    /// the scene file (Rhai, 1.1).
     pub fn load_scene(self, path: impl AsRef<Path>) -> Result<Self, SceneError> {
-        self.scene(Scene::load(path)?)
+        let path = path.as_ref();
+        let scene = Scene::load(path)?;
+        let attachments = scene.script_attachments();
+        let mut k = self.scene(scene)?;
+        load_script_attachments(&mut k.scripts, attachments, path.parent())?;
+        Ok(k)
     }
+}
+
+pub(crate) fn load_script_attachments(
+    runtime: &mut ScriptRuntime,
+    attachments: Vec<(String, Option<String>)>,
+    base_dir: Option<&Path>,
+) -> Result<(), SceneError> {
+    if let Some(dir) = base_dir {
+        runtime.set_base_dir(Some(dir.to_path_buf()));
+    }
+    runtime.clear();
+    for (rel, entity) in attachments {
+        let path = match runtime.base_dir() {
+            Some(dir) => dir.join(&rel),
+            None => PathBuf::from(&rel),
+        };
+        runtime
+            .load_file(&path, entity)
+            .map_err(|err| SceneError::Script(err.to_string()))?;
+    }
+    Ok(())
 }
 
 // --- Serde wire format -------------------------------------------------------
@@ -826,6 +886,28 @@ mod tests {
         );
         let round = Scene::from_json(&scene.to_json().unwrap()).unwrap();
         assert_eq!(round, scene);
+    }
+
+    #[test]
+    fn script_attachments_from_extras() {
+        let json = r#"{
+          "version": 1,
+          "camera": {"fov_y": 60, "eye": [0, 0, 5], "target": [0, 0, 0]},
+          "light": {"direction": [0, -1, 0]},
+          "extras": {"script": "hello.rhai"},
+          "entities": [
+            {
+              "name": "cube",
+              "mesh": {"type": "cube"},
+              "extras": {"script": "spin.rhai"}
+            }
+          ]
+        }"#;
+        let scene = Scene::from_json(json).expect("load scripts");
+        let atts = scene.script_attachments();
+        assert_eq!(atts.len(), 2);
+        assert_eq!(atts[0], ("hello.rhai".into(), None));
+        assert_eq!(atts[1], ("spin.rhai".into(), Some("cube".into())));
     }
 
     #[test]

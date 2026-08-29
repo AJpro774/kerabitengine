@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -36,6 +37,7 @@ use crate::input_map::{map_key, map_mouse_button};
 use crate::material::Material;
 use crate::scene::SceneError;
 use crate::ui::Ui;
+use kerabit_script::ScriptRuntime;
 
 /// Game-facing engine builder. Call [`Kerabit::run`] to open a window.
 pub struct Kerabit {
@@ -49,6 +51,7 @@ pub struct Kerabit {
     window_size: (u32, u32),
     /// When set, dump RGBA PNG frames each tick (fixed 1/30 dt) for trailers.
     capture_dir: Option<std::path::PathBuf>,
+    pub(crate) scripts: ScriptRuntime,
 }
 
 impl Kerabit {
@@ -63,6 +66,7 @@ impl Kerabit {
             ambient: Color::rgb(0.15, 0.16, 0.18),
             window_size: (960, 640),
             capture_dir: None,
+            scripts: ScriptRuntime::new(),
         }
     }
 
@@ -76,6 +80,12 @@ impl Kerabit {
     pub fn capture_frames(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
         self.capture_dir = Some(dir.into());
         self
+    }
+
+    /// Compile and attach a scene-level `.rhai` file (runs every frame after the Rust `run` closure).
+    pub fn script(mut self, path: impl AsRef<Path>) -> Result<Self, crate::ScriptError> {
+        self.scripts.load_file(path, None)?;
+        Ok(self)
     }
 
     /// Framebuffer clear color.
@@ -182,6 +192,7 @@ struct App<F> {
     quit: bool,
     capture_dir: Option<std::path::PathBuf>,
     capture_frame: u32,
+    scripts: ScriptRuntime,
 }
 
 impl<F> ApplicationHandler for App<F>
@@ -325,8 +336,10 @@ where
                 lights: &mut self.lights,
                 ambient: &mut self.ambient,
                 clear_color: &mut self.clear_color,
+                scripts: &mut self.scripts,
             };
             (self.update)(&mut ctx);
+            ctx.tick_scripts();
         }
 
         self.audio.maintain();
@@ -506,6 +519,7 @@ where
     let input = InputState::new();
     let mut quit = false;
     let mut frame_idx = 0u32;
+    let mut scripts = builder.scripts;
 
     spawn_entities(&mut world, &mut renderables, &mut gpu, builder.pending)
         .map_err(|err| anyhow::anyhow!("{err}"))?;
@@ -537,8 +551,10 @@ where
                 lights: &mut lights,
                 ambient: &mut ambient,
                 clear_color: &mut clear_color,
+                scripts: &mut scripts,
             };
             update(&mut ctx);
+            ctx.tick_scripts();
         }
         audio.maintain();
         if quit {
@@ -599,6 +615,7 @@ where
             quit: false,
             capture_dir: builder.capture_dir.clone(),
             capture_frame: 0,
+            scripts: builder.scripts,
         };
 
         if let Some(dir) = app.capture_dir.as_ref() {

@@ -5,11 +5,39 @@ All notable changes to Kerabit are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] — 2026-08-28
+
+**Scripting Summit** — rich Rhai host API so authors can ship small games mostly in `.rhai`. Frozen 1.0 Rust APIs unchanged.
+
+### Added
+
+- **Rich Rhai host (Frozen for 2.0)** — reads (`pos` / `get_pos`, `scale`, `enabled`, `has_tag`), world writes (`set_scale`, `set_enabled`, `add_tag` / `remove_tag`, `despawn`, `spawn_cube` / `spawn_cube_ex` / `spawn_plane`, `spawn_prefab`), input (`mouse_pos`, `mouse_button_down` / `pressed`), sim (`move_planar`, `register_box`), juice (`play` / `play_at`, `spawn_particles`, `set_camera`), UI (`ui_text` / `ui_rect`, ASCII overlay), persistence (`set` / `get` / `has`), `reload_scripts()`, optional `fn init()` / `fn update()`.
+- Auto **mtime hot-reload** of loaded `.rhai` files; editor Script panel **Check** + **Reload**.
+- **`apply_scene`** resolves script paths via the last scene directory (same rule as `load_scene`).
+- **Spark** — `cargo run -p spark`; logic in `games/spark/scenes/spark.rhai`.
+- Site scripting guide expanded for the 2.0 host table.
 
 ### Changed
 
-- **Reach** — Summit (level 12) dodge path opened (posts blocked the only turns). Campaign is **16 levels / 4 chapters** (new **IV · Afterglow**: Needle, Fork, Wells, Crown).
+- Workspace version → **`2.0.0`**.
+- Rhai baseline (runtime, scene `extras.script`, editor panel, `hello_rhai`) lands as part of 2.0.
+
+## [1.1.0] — 2026-08-12
+
+Additive **Rhai** scripting + in-engine code editor notes (superseded / folded into 2.0.0 ship). Frozen 1.0 Rust APIs unchanged.
+
+### Added
+
+- **`kerabit-script`** — Rhai runtime with a tiny host API (`dt`, `key_down` / `key_pressed`, `rotate_*`, `translate` / `set_pos`, `exists`, `names_with_tag`, `quit`).
+- Scene hook: `extras.script` or `components.script` (path relative to the `.kerabit.json`) on the scene root or an entity (`self` binds to that entity name).
+- Scripts tick automatically after the Rust `run` closure. `Kerabit::load_scene` / `Context::load_scene` compile them; `Kerabit::script` attaches a file without a scene bag. `ctx.script_error()` for overlay text.
+- Example: `cargo run -p kerabit --example hello_rhai` (`examples/scenes/hello.rhai`).
+- **Editor** — Script menu + bottom code panel (egui `TextEdit`); inspector / environment `extras.script` fields; Play loads scripts. egui stays in `tools/`.
+- **Reach** — Summit (level 12) dodge path opened. Campaign is **16 levels / 4 chapters** (IV · Afterglow).
+
+### Changed
+
+- Workspace version → **`1.1.0`** (historical; current line is 2.0.0).
 
 ## [1.0.0] — 2026-08-10
 
@@ -32,9 +60,8 @@ Kerabit **1.0** — Summit ship. Install stays rustup + cargo. Reach player zips
 
 ### Notes
 
-- **No scripting in 1.0** — Rust + scenes + tags only. Post-1.0 locked: scripting language = **Rhai**; in-engine code editor deferred (follows Rhai runtime); egui stays in `tools/`.
+- **No scripting in 1.0** — Rust + scenes + tags only. Post-1.0: scripting language = **Rhai**.
 - Breaking changes to **Frozen for 1.0** APIs require a semver bump and a CHANGELOG entry.
-
 ## [1.0.0-alpha.2] — 2026-08-01
 
 Summit M0–M7 working branch toward 1.0 (install stays rustup + cargo).

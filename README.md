@@ -4,7 +4,7 @@ Lean native Rust 3D engine: **simple for the game author, deep in the engine**.
 
 **Site:** [kerabitengine.vercel.app](https://kerabitengine.vercel.app) · **Repo:** [github.com/AJpro774/kerabitengine](https://github.com/AJpro774/kerabitengine)
 
-> **Status:** **Kerabit 1.0** (`1.0.0`). Flagship: **Reach**. Second title: **Surge**. Trailer: **Showcase**. Summit roadmap (complete): [ROADMAP.md](ROADMAP.md).
+> **Status:** **Kerabit 2.0** (`2.0.0`) — Scripting Summit. Flagship: **Reach**. Script-first proof: **Spark**. Also **Surge** + **Showcase**. Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Install
 
@@ -17,6 +17,7 @@ Clone-and-cargo for authors. Install is unchanged:
 ```bash
 git clone https://github.com/AJpro774/kerabitengine.git
 cd kerabitengine
+cargo run -p spark
 cargo run -p reach
 cargo run -p surge
 cargo run -p showcase
@@ -29,6 +30,7 @@ Frozen vs experimental public APIs: [API.md](API.md). Release notes: [CHANGELOG.
 
 - Tiny game-facing API (builder + `run` closure; no wgpu in user code)
 - Real wgpu renderer, scene graph, assets, physics/audio, `.kerabit.json` scenes
+- Rhai scripting rich enough to ship small games mostly in `.rhai` (2.0)
 - Install/build footprint far under a 20GB budget (target: &lt; 1GB toolchain + debug build)
 
 ## Play Reach (release)
@@ -71,6 +73,7 @@ Controls: **Space** start / next · **WASD** move · **R** retry · **Escape** q
 |-------|-----|
 | Getting Started (≤30 min stranger path) | [docs/getting-started](https://kerabitengine.vercel.app/docs/getting-started) |
 | API tour | [docs/api-tour](https://kerabitengine.vercel.app/docs/api-tour) |
+| Rhai scripting (2.0) | [docs/scripting](https://kerabitengine.vercel.app/docs/scripting) |
 | Editor guide | [docs/editor](https://kerabitengine.vercel.app/docs/editor) |
 
 ## Quick start (engine / authors)
@@ -78,6 +81,7 @@ Controls: **Space** start / next · **WASD** move · **R** retry · **Escape** q
 ```bash
 # Requires a recent stable Rust toolchain (pinned in rust-toolchain.toml)
 cargo run -p kerabit --example hello
+cargo run -p kerabit --example hello_rhai
 cargo run -p reach
 cargo run -p surge
 cargo run -p showcase
@@ -92,7 +96,15 @@ cargo run -p kerabit --example playground
 cargo run -p kerabit-editor
 ```
 
-Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select (**Shift+click** multi-select), **W/E/R** for move/rotate/scale gizmos, configurable snap (persisted in `~/.kerabit/editor.json`), **Place cube** then click the ground plane. **Ctrl+Z / Ctrl+Shift+Z** undo/redo; Edit → Align X/Y/Z; File → Save Prefab / Instance Prefab (`.kerabit.prefab.json`, samples in `games/reach/prefabs/`). File → Save writes `.kerabit.json`. **Play** runs the scene in a child window (dirty scenes use a temp snapshot; Esc returns with selection intact). Editor is a **dev tool** — not bundled inside the shipped Reach.app.
+Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select (**Shift+click** multi-select), **W/E/R** for move/rotate/scale gizmos, configurable snap (persisted in `~/.kerabit/editor.json`), **Place cube** then click the ground plane. **Ctrl+Z / Ctrl+Shift+Z** undo/redo; Edit → Align X/Y/Z; File → Save Prefab / Instance Prefab (`.kerabit.prefab.json`, samples in `games/reach/prefabs/`). File → Save writes `.kerabit.json`. **Script** menu opens a Rhai panel (`extras.script` on the scene or an entity). **Play** runs the scene (and its scripts) in a child window (dirty scenes use a temp snapshot; Esc returns with selection intact). Editor is a **dev tool** — not bundled inside the shipped Reach.app.
+
+### Rhai (1.1)
+
+```bash
+cargo run -p kerabit --example hello_rhai
+```
+
+Attach a `.rhai` file with scene/entity `extras.script` (path relative to the `.kerabit.json`). Scripts run every frame after the Rust `run` closure. Host API: `dt()`, `key_down` / `key_pressed`, `rotate_y` / `translate` / `set_pos`, `exists`, `names_with_tag`, `quit`. Entity scripts get `self` (the entity name). See [API.md](API.md).
 
 ### Reach (flagship)
 
@@ -166,6 +178,8 @@ fn main() {
 
 | Example | Command |
 |---------|---------|
+| Hello cube | `cargo run -p kerabit --example hello` |
+| Hello Rhai (1.1) | `cargo run -p kerabit --example hello_rhai` |
 | **Reach** (flagship) | `cargo run -p reach` |
 | **Surge** (score-attack) | `cargo run -p surge` |
 | **Showcase** (trailer) | `cargo run -p showcase` |
@@ -180,10 +194,10 @@ fn main() {
 
 | Doc | Purpose |
 |-----|---------|
-| [Site docs](https://kerabitengine.vercel.app/docs/) | Getting Started, API tour, Editor guide |
-| [ROADMAP.md](ROADMAP.md) | Summit moonshot phases M0–M9 |
+| [Site docs](https://kerabitengine.vercel.app/docs/) | Getting Started, API tour, Rhai, Editor |
+| [ROADMAP.md](ROADMAP.md) | Summit moonshot phases M0–M9 + 1.1 Rhai |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, frame loop, GPU model, phase status |
-| [API.md](API.md) | Public surface contract + 1.0 freeze |
+| [API.md](API.md) | Public surface contract + 1.0 freeze + 1.1 Rhai |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Ownership, editor workflow, accept gates |
 

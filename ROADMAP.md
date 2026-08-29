@@ -1,12 +1,12 @@
 # Kerabit Summit Roadmap
 
-Moonshot plan to level Kerabit into a serious tiny-engine competitor for small teams — still one composition for authors (`spawn` / `run` / scenes / editor), deep enough to ship ambitious games.
+Moonshot plan to level Kerabit into a serious tiny-engine competitor for small teams — still one composition for authors (`spawn` / `run` / scenes / editor / Rhai), deep enough to ship ambitious games.
 
 **Install stays the same:** [rustup](https://rustup.rs/) + `git clone` + `cargo run -p …` (no new installer).
 
-**Version path:** closed at **`1.0.0`** (Summit M0–M9 complete). Post-1.0 work follows the locked decisions below.
+**Version path:** **`1.0.0`** Summit M0–M9 · **`2.0.0`** Scripting Summit (M10–M15) — rich Rhai host API + script-first proof game **Spark**.
 
-## Phase map (M0–M9)
+## Phase map (M0–M9) — complete
 
 | Phase | Focus | Accept (summary) |
 |-------|--------|------------------|
@@ -21,6 +21,17 @@ Moonshot plan to level Kerabit into a serious tiny-engine competitor for small t
 | **M8** — Hardening | Clippy CI, frustum cull, 10k cube perf, bug sweep | Interactive 10k cubes; no known P0s |
 | **M9** — Kerabit 1.0 | `1.0.0` freeze, GitHub Release, site launch | All prior gates green; tagged on `main` |
 
+## Phase map (M10–M15) — Scripting Summit (2.0)
+
+| Phase | Focus | Accept |
+|-------|--------|--------|
+| **M10** — Baseline | Rhai runtime + getters + mouse + `apply_scene` path fix | `hello_rhai` green; docs linked |
+| **M11** — World authorship | spawn/despawn/tags/enable/scale + prefab | Script creates/destroys entities |
+| **M12** — Sim & juice | `move_planar`, audio, particles, camera | Script-driven mover |
+| **M13** — Author UX | hot-reload, UI host, editor Check/Reload | Edit `.rhai` → Play sees change |
+| **M14** — Proof game | `games/spark` script-first playable | `cargo run -p spark` |
+| **M15** — Product | Version `2.0.0`, docs/site, freeze host table | Release notes match host API |
+
 ## Tracks
 
 Parallel work owns a track, not the whole monorepo:
@@ -28,40 +39,25 @@ Parallel work owns a track, not the whole monorepo:
 - **Engine-Render** — `kerabit-render`, shaders
 - **Engine-Simulation** — `kerabit-world`, `kerabit-physics`, `kerabit-anim`
 - **Engine-Audio** — `kerabit-audio`
+- **Engine-Script** — `kerabit-script` (Rhai host)
 - **Editor** — `tools/kerabit-editor`
-- **Games** — `games/reach`, `games/surge`, `games/showcase`
+- **Games** — `games/reach`, `games/surge`, `games/showcase`, `games/spark`
 - **Product** — `site/`, `.github/`, docs, packaging
 
-Merge spine: **engine foundations → editor → games → product.**
-
-## Locked decisions (1.0)
+## Locked decisions (1.0 / 2.0)
 
 - Public game API stays tiny; breaks only with semver + CHANGELOG
 - Editor stays egui in `tools/`; never leak egui into `kerabit`
 - Platforms: macOS + Windows + Linux compile/run; player zips at least macOS + Windows
-- **No scripting in 1.0** — Rust + scenes + tags only (no Lua/JS/Rhai runtime in this release)
+- Scripting language = **Rhai** (`kerabit-script`); 2.0 freezes the rich host table in [API.md](API.md)
 
-## Locked decisions (post-1.0)
+## Non-goals
 
-- Scripting language = **Rhai**
-- In-engine code editor deferred (follows Rhai runtime)
-- egui stays in `tools/` (never in the game crate)
-
-## Non-goals (even for moonshot 1.0)
-
-Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundling a DCC.
+Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundling a DCC, rewriting Reach into Rhai.
 
 ## Status
 
-**M0** — done on `1.0.0-alpha.2`  
-**M1** — done (PBR-lite, lights, post, particles)  
-**M2** — done (`kerabit-anim`, dynamics + character controller, entity queries, `physics_sandbox`)  
-**M3** — done (spatial audio, buses, music stream)  
-**M4** — done (editor undo/multi-select/prefabs/snap/Play polish)  
-**M5** — done (Reach 16-level / 4-chapter campaign)  
-**M6** — done (Surge timed + endless modes, 5 arenas; `games/showcase` trailer)  
-**M7** — done (site downloads; Reach macOS+Windows zips; tag-triggered `package-reach`)  
-**M8** — done (Clippy CI, frustum cull, `MAX_INSTANCES=16384`, interactive ~10k cubes)  
-**M9** — done (**Kerabit 1.0.0** freeze, GitHub Release, site launch)
+**M0–M9** — done (**Kerabit 1.0.0**)  
+**M10–M15** — done (**Kerabit 2.0.0** Scripting Summit)
 
 See also [ARCHITECTURE.md](ARCHITECTURE.md), [API.md](API.md), and [README.md](README.md).

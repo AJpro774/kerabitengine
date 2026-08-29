@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use kerabit::{Scene, SceneMesh};
+use kerabit::{map_script_path, Scene, SceneMesh};
 
 /// Collect human-readable validation issues for a scene.
 pub fn validate(scene: &Scene, scene_dir: Option<&Path>) -> Vec<String> {
@@ -57,7 +57,25 @@ pub fn validate(scene: &Scene, scene_dir: Option<&Path>) -> Vec<String> {
         }
     }
 
+    if let Some(rel) = map_script_path(&scene.extras).or_else(|| map_script_path(&scene.components))
+    {
+        if !script_file_ok(&rel, scene_dir) {
+            errors.push(format!("scene script missing: {rel}"));
+        }
+    }
+    for e in &scene.entities {
+        if let Some(rel) = map_script_path(&e.extras).or_else(|| map_script_path(&e.components)) {
+            if !script_file_ok(&rel, scene_dir) {
+                errors.push(format!("entity \"{}\": missing script {rel}", e.name));
+            }
+        }
+    }
+
     errors
+}
+
+fn script_file_ok(rel: &str, scene_dir: Option<&Path>) -> bool {
+    asset_exists(Path::new(rel), scene_dir)
 }
 
 fn asset_exists(path: &Path, scene_dir: Option<&Path>) -> bool {

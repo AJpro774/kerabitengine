@@ -65,7 +65,7 @@
       </section>
 
       <section id="install" class="band">
-        <h2>Kerabit 1.0 — clone &amp; cargo</h2>
+        <h2>Kerabit 2.0 — clone &amp; cargo</h2>
         <p>
           Install Rust stable via
           <a href="https://rustup.rs/">rustup</a>, then clone and run. Same
@@ -74,6 +74,8 @@
         <pre class="code"><code>git clone https://github.com/AJpro774/kerabitengine.git
 cd kerabitengine
 cargo run -p kerabit --example hello
+cargo run -p kerabit --example hello_rhai
+cargo run -p spark
 cargo run -p kerabit-editor
 cargo run -p reach</code></pre>
         <p class="note">
@@ -106,7 +108,7 @@ cargo run -p reach</code></pre>
           >
         </div>
         <p class="note">
-          Kerabit 1.0 includes
+          Reach players include
           <code>Reach-macos.zip</code> (Reach.app) and
           <code>Reach-windows.zip</code> (<code>reach.exe</code> +
           <code>levels/</code> + <code>assets/</code>). Rebuild locally with
@@ -133,13 +135,19 @@ cargo run -p reach</code></pre>
           <li>
             <a href="/docs/api-tour">
               <strong>API tour</strong>
-              <span>Builder, Context, scenes, lights, physics, audio.</span>
+              <span>Builder, Context, scenes, lights, physics, audio, Rhai.</span>
+            </a>
+          </li>
+          <li>
+            <a href="/docs/scripting">
+              <strong>Rhai scripting</strong>
+              <span>2.0 host API, Spark, hot-reload, editor panel.</span>
             </a>
           </li>
           <li>
             <a href="/docs/editor">
               <strong>Editor guide</strong>
-              <span>Viewport, Play, undo, prefabs, Reach authoring.</span>
+              <span>Viewport, Play, undo, prefabs, Script panel.</span>
             </a>
           </li>
         </ul>
@@ -161,7 +169,7 @@ cargo run -p kerabit-editor</code></pre>
       <section id="changelog" class="band">
         <h2>Changelog</h2>
         <p>
-          Current line: <strong>1.0.0</strong> (Kerabit 1.0 / Summit ship).
+          Current line: <strong>2.0.0</strong> (Scripting Summit). Reach player zips remain on the 1.0 release tags until re-cut.
           Highlights:
         </p>
         <ul class="changelog-snip">

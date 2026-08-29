@@ -1,0 +1,17 @@
+[package]
+name = "kerabit-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rhai scripting runtime for Kerabit (host API over world + input)"
+rust-version.workspace = true
+
+[dependencies]
+rhai = { workspace = true }
+kerabit-world = { workspace = true }
+kerabit-input = { workspace = true }
+kerabit-math = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

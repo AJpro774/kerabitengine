@@ -2,7 +2,7 @@
 
 This document is the **stable target** for game-facing types. Changes require updating this file in the same change.
 
-> **Kerabit `1.0.0`:** frozen vs experimental surfaces are listed below. wgpu / winit types are not part of the public surface.
+> **Kerabit `2.0.0`:** frozen 1.0 surfaces stay frozen. Rhai scripting host API is **Frozen for 2.0**. wgpu / winit types are not part of the public surface.
 
 ## 1.0 freeze
 
@@ -15,14 +15,15 @@ Breaking a **Frozen for 1.0** item requires a semver bump and a [CHANGELOG.md](C
 | `Mesh` | **Frozen for 1.0** | `cube` / `plane` / `load_obj` |
 | `Material` | **Frozen for 1.0** | `color` / `roughness` / `metallic` / texture + normal-map helpers (M1 additive) |
 | `Scene`, `SceneError`, `SCENE_VERSION`, `SceneMap` | **Frozen for 1.0** | `.kerabit.json` load/save; additive `components`/`extras` / `metallic`; `into_kerabit` |
-| `Context` | **Frozen for 1.0** | `dt` / `input` / `world` / `camera` / `physics` / `audio` / `ui` / `quit` / `apply_scene` / `load_scene` / spawn helpers; M1 `lights` / `set_lights` / `spawn_particles`; M3 `sync_audio_listener` |
+| `Context` | **Frozen for 1.0** + **2.0 additive** | `dt` / `input` / `world` / `camera` / `physics` / `audio` / `ui` / `quit` / `apply_scene` / `load_scene` / spawn helpers; M1 `lights` / `set_lights` / `spawn_particles`; M3 `sync_audio_listener`; `script_error` |
+| `ScriptRuntime`, `ScriptError`, `Kerabit::script` | **Frozen for 2.0** | Rich Rhai host API (see below); scene `extras.script` / `components.script`; auto-tick after `run`; hot-reload |
 | `Ui` | **Frozen for 1.0** | `text` / `rect` (normalized top-left coords) |
 | Physics (`PhysicsWorld`, `Aabb`, casts, `move_and_collide`) | **Frozen for 1.0** + **M2 additive** | Static AABBs; dynamics + `CharacterController` additive |
 | `kerabit-anim` (`AnimationClip`, `AnimationPlayer`) | **Additive (M2)** | Clip playback on hierarchy; glTF anim import stretch/minimal |
 | Audio (`AudioEngine`, `SoundId`) | **Frozen for 1.0** + **M3 additive** | WAV play / volume / null fallback; spatial `play_at`, `MixBus`, streaming `play_music`, `AudioListener` |
 | Math / color (`Vec3`, `Quat`, `Color`, …) | **Frozen for 1.0** | Via prelude |
 | `Camera`, `Light`, `LightKind`, `ParticleBurst`, `Key`, `InputState` | **Frozen for 1.0** | View/light/particles + input; multi-light ≤4 (M1) |
-| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change without a 1.0 patch. M4: undo/redo, multi-select, prefabs, snap persistence, polished child-process Play |
+| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change. M4 + Script panel (Check / Reload); Play hot-reloads `.rhai` |
 | Surge motion tags (`orbit`, `slide_x`, `slide_z`) | **Experimental** | Game convention used by Surge; not a general engine contract |
 | Anything marked unstable / internal | **Experimental** | Do not depend on from published games without pinning |
 
@@ -83,7 +84,8 @@ fn main() {
 | `Camera`, `Light`, `LightKind`, `MAX_LIGHTS` | **P3/M1** | `perspective` + `look_at`; `Light::sun` / `point` + intensity/range; up to **4** lights |
 | `ParticleBurst` | **M1** | Billboard burst via `ctx.spawn_particles` |
 | `Key`, `MouseButton`, `InputState` | **P3** | `key_down` / `key_pressed`; mouse pos / delta / buttons |
-| `Context` | **P3/P6/UI/E0/M1/M3** | `dt`, `input`, `world` / `world_mut`, `camera` / `camera_mut`, `physics`, `audio`, `ui`, `quit`; runtime `clear_world` / `despawn` / `spawn` / `apply_scene` / `load_scene`; `lights` / `set_lights` / `spawn_particles`; `sync_audio_listener` |
+| `Context` | **P3/P6/UI/E0/M1/M3/1.1** | `dt`, `input`, `world` / `world_mut`, `camera` / `camera_mut`, `physics`, `audio`, `ui`, `quit`; runtime `clear_world` / `despawn` / `spawn` / `apply_scene` / `load_scene`; `lights` / `set_lights` / `spawn_particles`; `sync_audio_listener`; `script_error` |
+| `ScriptRuntime`, `ScriptError` | **1.1** | Rhai; `Kerabit::script`; scene `extras.script` |
 | `Ui` | **UI** | Immediate-mode overlay: `text` / `rect` via `ctx.ui()` |
 | `World`, `Transform`, `EntityId`, `LAYER_DEFAULT` | **P4/E0/M2** | Hierarchy; enable/disable; tags / layer queries |
 | `PhysicsWorld`, `Aabb`, `ColliderId`, `RayHit`, `SphereCastHit`, `MoveResult` | **P6/E0** | Static AABBs; ray/sphere cast; kinematic block; `clear` |
@@ -170,7 +172,7 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 - **Lighting / sky (E5 + M1):** Scene authors one directional **sun** (`light.direction` / `intensity` / `color`) plus `ambient` and `clear_color`. Runtime code may set up to **4** lights via `Kerabit::lights` / `ctx.set_lights` (dir + point); soft shadows still follow the first directional only. The renderer paints a **sky gradient** using `clear_color` as the horizon (zenith is derived).
 - **Materials (M1):** optional additive `"metallic"` on scene materials (default `0`); `SCENE_VERSION` stays **1**.
 - **Entity tags (E3):** each entity may include `"tags": ["player", "wall", …]` (string list). Omitted or `[]` means no tags. `SCENE_VERSION` stays **1** (additive field). Shared roles: `player`, `goal`, `ground`, `wall`, `hazard` — prefer tags; legacy name exact match / `wall_*` / `hazard_*` prefixes still work for one version. `SceneEntity::has_tag`
-- **Reserved bags (M0):** optional `"components"` and `"extras"` JSON objects on the **scene root** and each **entity**. Omitted or `{}` today; preserved on load/save; ignored at spawn. `SCENE_VERSION` stays **1**. Types: `SceneMap` / `Scene::{components,extras}` / `SceneEntity::{components,extras}`.
+- **Reserved bags (M0 / 1.1):** optional `"components"` and `"extras"` JSON objects on the **scene root** and each **entity**. `SCENE_VERSION` stays **1**. Types: `SceneMap` / `Scene::{components,extras}` / `SceneEntity::{components,extras}`. **1.1:** `"script": "file.rhai"` in `extras` or `components` (path relative to the scene file). Scene-level scripts have no `self`; entity scripts bind `self` to the entity name. `Scene::script_attachments` / `map_script_path`.
 - **Surge motion tags (E7):** on `hazard` entities, optional `orbit` / `slide_x` / `slide_z` select patrol style for the score-attack arenas (`games/surge`)
 - `Kerabit::load_scene(path)` / `Kerabit::scene(Scene)` / `Scene::into_kerabit(title)`
 - **Prefabs (M4):** `Prefab::load` / `save` / `from_json` / `to_json` / `instantiate(scene, offset)` — `.kerabit.prefab.json` (version + entities only; same entity wire format as scenes). Editor: File → Save Prefab / Instance Prefab. Samples under `games/reach/prefabs/`.
@@ -195,8 +197,39 @@ for (center, half) in &walls {
 | `ctx.clear_world()` | Drop all entities + GPU draw entries + physics colliders; camera/light/ambient/clear unchanged |
 | `ctx.despawn(name)` / `ctx.despawn_id(id)` | World remove **and** renderable sync (prefer over raw `world_mut().despawn`) |
 | `ctx.spawn(Entity)` | Mid-run spawn with mesh upload + draw entry |
-| `ctx.apply_scene(&Scene)` | `clear_world` + camera/light/ambient/clear + spawn scene entities |
-| `ctx.load_scene(path)` | `Scene::load` then `apply_scene` |
+| `ctx.apply_scene(&Scene)` | `clear_world` + camera/light/ambient/clear + spawn scene entities; reloads scripts (paths vs last scene dir) |
+| `ctx.load_scene(path)` | `Scene::load` then apply; script paths relative to the scene file |
+| `ctx.script_error()` | Last Rhai error this frame, if any |
+
+### Rhai (2.0 — Frozen)
+
+Prefer `fn init()` / `fn update()`. Bare top-level statements still re-run each frame (compat). Persist with `set` / `get` / `has`.
+
+```rhai
+fn init() { set("t", 0.0); }
+fn update() {
+    if key_pressed("Escape") { quit(); }
+    set("t", get("t") + dt());
+    rotate_y("cube", 1.1 * dt());
+}
+```
+
+Scripts tick **after** the Rust `run` closure. Attach with scene/entity `"script"` in `extras` or `components` (path relative to the `.kerabit.json`), or `Kerabit::script(path)`. Entity scripts bind `self`. Examples: `hello_rhai`, `cargo run -p spark`. Site: [docs/scripting](https://kerabitengine.vercel.app/docs/scripting).
+
+| Function | Notes |
+|----------|-------|
+| `dt()` / `quit()` / `reload_scripts()` | Frame delta; quit; force reload |
+| `key_down` / `key_pressed` | Case-insensitive key names |
+| `mouse_pos` / `mouse_button_down` / `pressed` | `"left"` / `"right"` / `"middle"` |
+| `pos` / `get_pos` / `scale` / `enabled` / `has_tag` / `exists` / `names_with_tag` | World reads |
+| `rotate_x/y/z` / `translate` / `set_pos` / `set_scale` / `set_enabled` / `add_tag` / `remove_tag` | World writes |
+| `despawn` / `spawn_cube` / `spawn_cube_ex` / `spawn_plane` / `spawn_prefab` | Authorship |
+| `move_planar` / `register_box` | Physics helpers |
+| `play` / `play_at` / `spawn_particles` / `set_camera` | Juice / view |
+| `ui_text` / `ui_rect` | Overlay (ASCII text; normalized 0–1) |
+| `set` / `get` / `has` | Persistent store |
+
+Missing entity names are no-ops. Parse errors fail `load_scene`. Runtime errors set `ctx.script_error()`. Loaded files hot-reload on mtime change.
 
 Prefer `apply_scene` for level transitions. Calling `Kerabit::run` again still works (EventLoop is reused) but tears down the window — use that only for full app restart.
 

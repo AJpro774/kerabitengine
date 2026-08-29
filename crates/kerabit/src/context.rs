@@ -1,18 +1,22 @@
 //! Per-frame context passed to the [`crate::Kerabit::run`] closure.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use kerabit_audio::AudioEngine;
 use kerabit_color::Color;
 use kerabit_input::InputState;
-use kerabit_physics::PhysicsWorld;
+use kerabit_math::Vec3;
+use kerabit_physics::{Aabb, PhysicsWorld};
 use kerabit_render::{clamp_lights, Camera, GpuState, Light, ParticleBurst};
+use kerabit_script::{PrimitiveKind, ScriptEffects, ScriptRuntime};
 use kerabit_world::{EntityId, World};
 
 use crate::engine::{spawn_entities, Renderable};
 use crate::entity::Entity;
-use crate::scene::{Scene, SceneError};
+use crate::material::Material;
+use crate::mesh::Mesh;
+use crate::scene::{load_script_attachments, Prefab, Scene, SceneError};
 use crate::ui::Ui;
 
 /// Frame context: timing, input, scene, camera, physics, audio, UI, and quit.
@@ -30,6 +34,7 @@ pub struct Context<'a> {
     pub(crate) lights: &'a mut Vec<Light>,
     pub(crate) ambient: &'a mut Color,
     pub(crate) clear_color: &'a mut Color,
+    pub(crate) scripts: &'a mut ScriptRuntime,
 }
 
 impl Context<'_> {
@@ -140,6 +145,137 @@ impl Context<'_> {
         *self.quit = true;
     }
 
+    /// Last Rhai error from this frame's script tick, if any.
+    #[inline]
+    pub fn script_error(&self) -> Option<&str> {
+        self.scripts.last_error()
+    }
+
+    /// Run loaded Rhai scripts against this frame (called automatically after the `run` closure).
+    pub(crate) fn tick_scripts(&mut self) {
+        let effects = self
+            .scripts
+            .tick(self.dt, self.input, self.world, self.quit);
+        self.apply_script_effects(effects);
+    }
+
+    /// Apply side effects that need GPU / physics / audio / UI.
+    fn apply_script_effects(&mut self, effects: ScriptEffects) {
+        let base = self.scripts.base_dir().map(Path::to_path_buf);
+
+        for name in effects.despawns {
+            let _ = self.despawn(&name);
+        }
+
+        for spawn in effects.spawns {
+            let color = Color::rgb(spawn.color[0], spawn.color[1], spawn.color[2]);
+            let mesh = match spawn.kind {
+                PrimitiveKind::Cube => Mesh::cube(),
+                PrimitiveKind::Plane => Mesh::plane(spawn.scale[0].abs().max(0.01)),
+            };
+            let scale = match spawn.kind {
+                PrimitiveKind::Cube => Vec3::new(spawn.scale[0], spawn.scale[1], spawn.scale[2]),
+                PrimitiveKind::Plane => Vec3::ONE,
+            };
+            let entity = Entity::new(spawn.name)
+                .mesh(mesh)
+                .material(Material::color(color))
+                .at(Vec3::new(spawn.at[0], spawn.at[1], spawn.at[2]))
+                .scale(scale);
+            let _ = self.spawn(entity);
+        }
+
+        for prefab in effects.prefabs {
+            let path = resolve_script_path(base.as_deref(), &prefab.path);
+            if let Ok(prefab_data) = Prefab::load(&path) {
+                let mut scratch = Scene::default();
+                prefab_data.instantiate(
+                    &mut scratch,
+                    Vec3::new(prefab.offset[0], prefab.offset[1], prefab.offset[2]),
+                );
+                if let Ok(entities) = scratch.build_entities() {
+                    for entity in entities {
+                        let _ = self.spawn(entity);
+                    }
+                }
+            }
+        }
+
+        for mv in effects.moves {
+            let Some(entity) = self.world.get(&mv.name) else {
+                continue;
+            };
+            let pos = entity.transform.translation();
+            let scale = entity.transform.scale();
+            let half = (scale * 0.5).abs().max(Vec3::splat(0.05));
+            // Velocity so move_and_collide travels (dx, 0, dz) this frame.
+            let inv_dt = if self.dt > 1e-6 { 1.0 / self.dt } else { 0.0 };
+            let velocity = Vec3::new(mv.dx * inv_dt, 0.0, mv.dz * inv_dt);
+            let result = self.physics.move_and_collide(pos, velocity, half, self.dt);
+            if let Some(e) = self.world.get_mut(&mv.name) {
+                e.transform.set_translation(result.position);
+            }
+        }
+
+        for name in effects.register_boxes {
+            let Some(entity) = self.world.get(&name) else {
+                continue;
+            };
+            let pos = entity.transform.translation();
+            let scale = entity.transform.scale();
+            let half = (scale * 0.5).abs().max(Vec3::splat(0.05));
+            self.physics
+                .add_aabb(Aabb::from_center_half_extents(pos, half));
+        }
+
+        for play in effects.plays {
+            let path = resolve_script_path(base.as_deref(), &play.path);
+            match play.at {
+                Some(at) => {
+                    let _ = self.audio.play_at(&path, Vec3::new(at[0], at[1], at[2]));
+                }
+                None => {
+                    let _ = self.audio.play(&path);
+                }
+            }
+        }
+
+        for p in effects.particles {
+            self.spawn_particles(ParticleBurst {
+                origin: Vec3::new(p.origin[0], p.origin[1], p.origin[2]),
+                count: p.count.max(1),
+                color: Color::rgb(p.color[0], p.color[1], p.color[2]),
+                ..ParticleBurst::default()
+            });
+        }
+
+        if let Some(cam) = effects.camera {
+            *self.camera = self.camera.clone().look_at(
+                Vec3::new(cam.eye[0], cam.eye[1], cam.eye[2]),
+                Vec3::new(cam.target[0], cam.target[1], cam.target[2]),
+            );
+        }
+
+        for r in effects.ui_rects {
+            self.ui.rect(
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                Color::rgba(r.color[0], r.color[1], r.color[2], r.color[3]),
+            );
+        }
+        for t in effects.ui_texts {
+            self.ui.text(
+                t.x,
+                t.y,
+                t.size,
+                Color::rgb(t.color[0], t.color[1], t.color[2]),
+                &t.text,
+            );
+        }
+    }
+
     /// Remove all entities, GPU draw entries, and physics colliders.
     ///
     /// Does not change camera, light, ambient, or clear color — follow with
@@ -210,11 +346,54 @@ impl Context<'_> {
             .as_mut()
             .ok_or_else(|| SceneError::Spawn("GPU not ready".into()))?;
         spawn_entities(self.world, self.renderables, gpu, entities)?;
+        // Resolve scripts like load_scene: prefer last scene dir, else keep prior base_dir.
+        let base = self.scripts.base_dir().map(PathBuf::from);
+        load_script_attachments(
+            self.scripts,
+            scene.script_attachments(),
+            base.as_deref(),
+        )?;
         Ok(())
     }
 
     /// Load `.kerabit.json` from `path` and [`Self::apply_scene`].
+    ///
+    /// Script paths in `extras.script` / `components.script` resolve relative
+    /// to the scene file.
     pub fn load_scene(&mut self, path: impl AsRef<Path>) -> Result<(), SceneError> {
-        self.apply_scene(&Scene::load(path)?)
+        let path = path.as_ref();
+        let scene = Scene::load(path)?;
+        let attachments = scene.script_attachments();
+        let entities = scene.build_entities()?;
+        self.clear_world();
+
+        *self.clear_color = scene.clear_color;
+        *self.ambient = scene.ambient;
+        *self.lights = vec![scene.to_light()];
+        let aspect = self.gpu.as_ref().map(|g| g.aspect()).unwrap_or(16.0 / 9.0);
+        *self.camera = scene.to_camera();
+        self.camera.set_aspect(aspect);
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.clear_color = scene.clear_color;
+        }
+
+        let gpu = self
+            .gpu
+            .as_mut()
+            .ok_or_else(|| SceneError::Spawn("GPU not ready".into()))?;
+        spawn_entities(self.world, self.renderables, gpu, entities)?;
+        load_script_attachments(self.scripts, attachments, path.parent())?;
+        Ok(())
+    }
+}
+
+fn resolve_script_path(base: Option<&Path>, rel: &str) -> PathBuf {
+    let p = Path::new(rel);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else if let Some(dir) = base {
+        dir.join(p)
+    } else {
+        p.to_path_buf()
     }
 }

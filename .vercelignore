@@ -1,0 +1,10 @@
+# Keep CLI deploys tiny — Vercel only needs the site sources + vercel.json.
+target
+dist
+.git
+site/public
+zingiCyC
+*.zip
+*.app
+node_modules
+.DS_Store

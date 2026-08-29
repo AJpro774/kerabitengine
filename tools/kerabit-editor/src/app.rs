@@ -5,8 +5,8 @@ use std::process::{Child, Command};
 
 use egui::{Color32, RichText, Ui};
 use kerabit::{
-    Color, Prefab, Quat, Scene, SceneCamera, SceneEntity, SceneLight, SceneMaterial, SceneMesh,
-    Vec3,
+    map_script_path, Color, Prefab, Quat, Scene, SceneCamera, SceneEntity, SceneLight,
+    SceneMaterial, SceneMesh, ScriptRuntime, Vec3,
 };
 
 use crate::selection::Selection;
@@ -68,6 +68,12 @@ pub struct EditorApp {
     play_selection_names: Vec<String>,
     /// Temp scene path used for dirty/unsaved Play (deleted when play ends).
     play_temp_path: Option<PathBuf>,
+    /// Bottom Rhai panel visibility.
+    script_open: bool,
+    script_path: Option<PathBuf>,
+    script_text: String,
+    script_dirty: bool,
+    script_error: Option<String>,
 }
 
 impl EditorApp {
@@ -88,6 +94,11 @@ impl EditorApp {
             play_child: None,
             play_selection_names: Vec::new(),
             play_temp_path: None,
+            script_open: false,
+            script_path: None,
+            script_text: String::new(),
+            script_dirty: false,
+            script_error: None,
         }
     }
 
@@ -274,6 +285,153 @@ impl EditorApp {
         self.path.as_ref().and_then(|p| p.parent())
     }
 
+    fn clear_script_buffer(&mut self) {
+        self.script_path = None;
+        self.script_text.clear();
+        self.script_dirty = false;
+        self.script_error = None;
+    }
+
+    fn sync_script_from_scene(&mut self) {
+        let rel = map_script_path(&self.scene.extras)
+            .or_else(|| map_script_path(&self.scene.components));
+        let Some(rel) = rel else {
+            self.clear_script_buffer();
+            return;
+        };
+        let path = match self.scene_dir() {
+            Some(dir) => dir.join(rel),
+            None => PathBuf::from(rel),
+        };
+        self.load_script_path(path);
+    }
+
+    fn load_script_path(&mut self, path: PathBuf) {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                self.script_path = Some(path.clone());
+                self.script_text = text;
+                self.script_dirty = false;
+                self.script_error = ScriptRuntime::check_source(&self.script_text)
+                    .err()
+                    .map(|e| e.to_string());
+                self.script_open = true;
+                self.status = format!("Opened script {}", path.display());
+            }
+            Err(err) => {
+                self.script_path = Some(path.clone());
+                self.script_text.clear();
+                self.script_dirty = false;
+                self.script_error = Some(format!("read failed: {err}"));
+                self.script_open = true;
+                self.status = format!("Script read failed: {err}");
+            }
+        }
+    }
+
+    fn open_script_dialog(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Rhai script", &["rhai"])
+            .set_title("Open .rhai");
+        if let Some(dir) = self.scene_dir() {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            self.load_script_path(path);
+        }
+    }
+
+    fn save_script(&mut self) {
+        if self.script_path.is_some() {
+            self.write_script_path();
+        } else {
+            self.save_script_as();
+        }
+    }
+
+    fn check_script_syntax(&mut self) {
+        match ScriptRuntime::check_source(&self.script_text) {
+            Ok(()) => {
+                self.script_error = None;
+                self.status = "Script syntax OK".into();
+            }
+            Err(err) => {
+                self.script_error = Some(err.to_string());
+                self.status = format!("Script error: {err}");
+            }
+        }
+    }
+
+    fn reload_script_from_disk(&mut self) {
+        let Some(path) = self.script_path.clone() else {
+            self.status = "No script path to reload".into();
+            return;
+        };
+        self.load_script_path(path);
+        self.status = "Reloaded script from disk".into();
+    }
+
+    fn save_script_as(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Rhai script", &["rhai"])
+            .set_file_name("scene.rhai")
+            .set_title("Save .rhai");
+        if let Some(dir) = self.scene_dir() {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.save_file() {
+            self.script_path = Some(path);
+            self.write_script_path();
+            self.bind_script_to_scene();
+        }
+    }
+
+    fn write_script_path(&mut self) {
+        let Some(path) = self.script_path.clone() else {
+            return;
+        };
+        match std::fs::write(&path, &self.script_text) {
+            Ok(()) => {
+                self.script_dirty = false;
+                self.script_error = ScriptRuntime::check_source(&self.script_text)
+                    .err()
+                    .map(|e| e.to_string());
+                self.status = format!("Saved script {}", path.display());
+            }
+            Err(err) => {
+                self.status = format!("Script save failed: {err}");
+            }
+        }
+    }
+
+    fn bind_script_to_scene(&mut self) {
+        let Some(script_path) = self.script_path.as_ref() else {
+            return;
+        };
+        let rel = self
+            .scene_dir()
+            .and_then(|dir| pathdiff_rel(dir, script_path))
+            .unwrap_or_else(|| {
+                script_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "scene.rhai".into())
+            });
+        self.scene
+            .extras
+            .insert("script".into(), serde_json::Value::String(rel));
+        self.mark_dirty();
+    }
+
+    fn new_scene_script(&mut self) {
+        self.script_text = "// Runs every Play frame.\nif key_pressed(\"Escape\") {\n    quit();\n}\n".into();
+        self.script_path = None;
+        self.script_dirty = true;
+        self.script_error = None;
+        self.script_open = true;
+        self.status = "New script — Save to attach to the scene".into();
+    }
+
     fn window_title(&self) -> String {
         let name = self
             .path
@@ -292,6 +450,7 @@ impl EditorApp {
         self.dirty = false;
         self.selection.clear();
         self.rename_buf.clear();
+        self.clear_script_buffer();
         self.status = "New scene".into();
     }
 
@@ -311,6 +470,7 @@ impl EditorApp {
                     self.dirty = false;
                     self.selection.clear();
                     self.rename_buf.clear();
+                    self.sync_script_from_scene();
                     self.status = format!("Opened {}", path.display());
                 }
                 Err(err) => {
@@ -321,6 +481,9 @@ impl EditorApp {
     }
 
     fn save_scene(&mut self) {
+        if self.script_dirty {
+            self.save_script();
+        }
         if self.path.is_some() {
             self.write_current_path();
         } else {
@@ -631,6 +794,38 @@ impl EditorApp {
                     ui.close_menu();
                 }
             });
+            ui.menu_button("Script", |ui| {
+                if ui
+                    .checkbox(&mut self.script_open, "Show panel")
+                    .changed()
+                {
+                    ui.close_menu();
+                }
+                if ui.button("Open .rhai…").clicked() {
+                    self.open_script_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Save script").clicked() {
+                    self.save_script();
+                    ui.close_menu();
+                }
+                if ui.button("Save script as…").clicked() {
+                    self.save_script_as();
+                    ui.close_menu();
+                }
+                if ui.button("New scene script").clicked() {
+                    self.new_scene_script();
+                    ui.close_menu();
+                }
+                if ui.button("Check syntax").clicked() {
+                    self.check_script_syntax();
+                    ui.close_menu();
+                }
+                if ui.button("Reload from disk").clicked() {
+                    self.reload_script_from_disk();
+                    ui.close_menu();
+                }
+            });
             ui.menu_button("Edit", |ui| {
                 if ui
                     .add_enabled(
@@ -719,6 +914,9 @@ impl EditorApp {
             });
             ui.separator();
             let playing = self.is_playing();
+            if playing {
+                ui.colored_label(Color32::from_rgb(0xe8, 0xff, 0x4a), "▶ live");
+            }
             if ui
                 .add_enabled(!playing, egui::Button::new("▶ Play"))
                 .on_hover_text("Play current scene (Ctrl+P) — dirty scenes use a temp snapshot")
@@ -873,6 +1071,8 @@ impl EditorApp {
             .unwrap_or_default();
         let mut parent = self.scene.entities[i].parent.clone();
         let mut tags = self.scene.entities[i].tags.clone();
+        let mut script_rel =
+            map_script_path(&self.scene.entities[i].extras).unwrap_or_default();
 
         let mut dirty = false;
 
@@ -1028,6 +1228,27 @@ impl EditorApp {
                 }
             });
 
+        ui.separator();
+        ui.label("Rhai script");
+        ui.horizontal(|ui| {
+            dirty |= ui.text_edit_singleline(&mut script_rel).changed();
+            if ui
+                .add_enabled(!script_rel.trim().is_empty(), egui::Button::new("Edit"))
+                .clicked()
+            {
+                let path = match self.scene_dir() {
+                    Some(dir) => dir.join(script_rel.trim()),
+                    None => PathBuf::from(script_rel.trim()),
+                };
+                self.load_script_path(path);
+            }
+        });
+        ui.label(
+            RichText::new("Relative to the scene file (`extras.script`).")
+                .small()
+                .weak(),
+        );
+
         if dirty {
             self.push_undo_if_needed();
             self.scene.entities[i].at = Vec3::new(at[0], at[1], at[2]);
@@ -1059,6 +1280,14 @@ impl EditorApp {
             };
             self.scene.entities[i].parent = parent;
             self.scene.entities[i].tags = tags;
+            if script_rel.trim().is_empty() {
+                self.scene.entities[i].extras.remove("script");
+            } else {
+                self.scene.entities[i].extras.insert(
+                    "script".into(),
+                    serde_json::Value::String(script_rel.trim().to_string()),
+                );
+            }
             self.mark_dirty();
         }
 
@@ -1137,6 +1366,23 @@ impl EditorApp {
             .changed();
         dirty |= ui.color_edit_button_rgb(&mut light_color).changed();
 
+        ui.separator();
+        ui.label("Scene Rhai script");
+        let mut scene_script = map_script_path(&self.scene.extras).unwrap_or_default();
+        ui.horizontal(|ui| {
+            dirty |= ui.text_edit_singleline(&mut scene_script).changed();
+            if ui
+                .add_enabled(!scene_script.trim().is_empty(), egui::Button::new("Edit"))
+                .clicked()
+            {
+                let path = match self.scene_dir() {
+                    Some(dir) => dir.join(scene_script.trim()),
+                    None => PathBuf::from(scene_script.trim()),
+                };
+                self.load_script_path(path);
+            }
+        });
+
         if dirty {
             self.push_undo_if_needed();
             self.scene.clear_color = Color::rgb(clear[0], clear[1], clear[2]);
@@ -1153,6 +1399,14 @@ impl EditorApp {
                 intensity,
                 color: Color::rgb(light_color[0], light_color[1], light_color[2]),
             };
+            if scene_script.trim().is_empty() {
+                self.scene.extras.remove("script");
+            } else {
+                self.scene.extras.insert(
+                    "script".into(),
+                    serde_json::Value::String(scene_script.trim().to_string()),
+                );
+            }
             self.mark_dirty();
         }
     }
@@ -1164,10 +1418,22 @@ impl EditorApp {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(unsaved)".into());
         let dirty = if self.dirty { "modified" } else { "clean" };
+        let playing = self.is_playing();
         ui.horizontal(|ui| {
+            if playing {
+                ui.colored_label(
+                    Color32::from_rgb(0xe8, 0xff, 0x4a),
+                    "● PLAYING",
+                );
+                ui.separator();
+            }
             ui.label(format!("{dirty}  ·  {path}"));
             ui.separator();
-            ui.label(&self.status);
+            if playing {
+                ui.colored_label(Color32::from_rgb(0xe8, 0xff, 0x4a), &self.status);
+            } else {
+                ui.label(&self.status);
+            }
             if !errors.is_empty() {
                 ui.separator();
                 ui.colored_label(
@@ -1184,6 +1450,56 @@ impl EditorApp {
             if errors.len() > 6 {
                 ui.label(format!("…and {} more", errors.len() - 6));
             }
+        }
+    }
+
+    fn ui_script_panel(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Rhai");
+            let label = self
+                .script_path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or("(unsaved)");
+            ui.label(RichText::new(label).weak());
+            if self.script_dirty {
+                ui.colored_label(Color32::from_rgb(220, 160, 60), "modified");
+            }
+            if ui.button("Save").clicked() {
+                self.save_script();
+            }
+            if ui.button("Check").clicked() {
+                self.check_script_syntax();
+            }
+            if ui.button("Reload").clicked() {
+                self.reload_script_from_disk();
+            }
+            if ui.button("Close").clicked() {
+                self.script_open = false;
+            }
+        });
+        if let Some(err) = &self.script_error {
+            ui.colored_label(Color32::from_rgb(220, 80, 80), err);
+        }
+        let mut text = std::mem::take(&mut self.script_text);
+        let response = egui::ScrollArea::vertical()
+            .max_height(220.0)
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut text)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(8),
+                )
+            })
+            .inner;
+        self.script_text = text;
+        if response.changed() {
+            self.script_dirty = true;
+            self.script_error = ScriptRuntime::check_source(&self.script_text)
+                .err()
+                .map(|e| e.to_string());
         }
     }
 
@@ -1274,20 +1590,33 @@ impl eframe::App for EditorApp {
             self.ui_status(ui, &errors);
         });
 
+        if self.script_open {
+            egui::TopBottomPanel::bottom("script_panel")
+                .resizable(true)
+                .default_height(200.0)
+                .show(ctx, |ui| {
+                    self.ui_script_panel(ui);
+                });
+        }
+
         egui::SidePanel::left("hierarchy")
             .default_width(260.0)
             .show(ctx, |ui| {
-                self.ui_hierarchy(ui);
+                ui.add_enabled_ui(!self.is_playing(), |ui| {
+                    self.ui_hierarchy(ui);
+                });
             });
 
         egui::SidePanel::right("inspector")
             .default_width(320.0)
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.ui_inspector(ui);
-                    ui.add_space(12.0);
-                    ui.separator();
-                    self.ui_environment(ui);
+                ui.add_enabled_ui(!self.is_playing(), |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        self.ui_inspector(ui);
+                        ui.add_space(12.0);
+                        ui.separator();
+                        self.ui_environment(ui);
+                    });
                 });
             });
 
@@ -1364,6 +1693,12 @@ fn default_prefabs_dir() -> Option<PathBuf> {
     } else {
         default_levels_dir()
     }
+}
+
+fn pathdiff_rel(base: &Path, path: &Path) -> Option<String> {
+    path.strip_prefix(base)
+        .ok()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
 }
 
 fn ensure_prefab_ext(path: PathBuf) -> PathBuf {

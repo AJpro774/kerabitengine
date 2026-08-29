@@ -2,8 +2,9 @@
 //!
 //! # Status
 //!
-//! **P7 + E0 + M2**: scenes, mid-run reload, dynamics, character controller,
-//! clip animation. wgpu / winit types are never re-exported.
+//! **2.0**: Scripting Summit — rich Rhai host API (`kerabit-script`) plus the 1.0
+//! Summit surface (scenes, mid-run reload, dynamics, character controller, clip
+//! animation). wgpu / winit types are never re-exported.
 //!
 //! Game authors should depend on this crate only.
 
@@ -56,6 +57,11 @@ pub mod audio {
     pub use kerabit_audio::*;
 }
 
+pub mod script {
+    //! Rhai scripting runtime (2.0).
+    pub use kerabit_script::*;
+}
+
 pub use assets::{load_gltf, Texture};
 pub use context::Context;
 pub use engine::Kerabit;
@@ -73,12 +79,13 @@ pub use kerabit_physics::{
     MoveResult, PhysicsWorld, RayHit, SphereCastHit,
 };
 pub use kerabit_render::{Camera, Light, LightKind, ParticleBurst, MAX_LIGHTS};
+pub use kerabit_script::{ScriptError, ScriptRuntime};
 pub use kerabit_world::{EntityId, Transform, World, LAYER_DEFAULT};
 pub use material::Material;
 pub use mesh::Mesh;
 pub use scene::{
-    Prefab, Scene, SceneCamera, SceneEntity, SceneError, SceneLight, SceneMap, SceneMaterial,
-    SceneMesh, SCENE_VERSION,
+    map_script_path, Prefab, Scene, SceneCamera, SceneEntity, SceneError, SceneLight, SceneMap,
+    SceneMaterial, SceneMesh, SCENE_VERSION,
 };
 pub use ui::Ui;
 
@@ -89,7 +96,8 @@ pub mod prelude {
         AssetError, AudioEngine, AudioError, AudioListener, BodyId, BodyShape, Camera,
         CharacterController, CharacterMove, Color, Context, Deg, DynamicBody, Entity, EntityId,
         InputState, Kerabit, Key, Light, LightKind, Material, Mat4, Mesh, MixBus, MouseButton,
-        ParticleBurst, PhysicsWorld, Prefab, Quat, QuatKey, Rad, Scene, SceneError, SoundId,
-        Texture, Transform, Ui, Vec2, Vec3, Vec3Key, World, LAYER_DEFAULT, MAX_LIGHTS,
+        ParticleBurst, PhysicsWorld, Prefab, Quat, QuatKey, Rad, Scene, SceneError, ScriptError,
+        ScriptRuntime, SoundId, Texture, Transform, Ui, Vec2, Vec3, Vec3Key, World, LAYER_DEFAULT,
+        MAX_LIGHTS,
     };
 }

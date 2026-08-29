@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rhai scripting — Kerabit</title>
+    <meta
+      name="description"
+      content="Kerabit 2.0 Rhai scripting: rich host API, Spark proof game, hot-reload, and the editor code panel."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/getting-started">Start</a>
+        <a href="/docs/api-tour">API tour</a>
+        <a href="/docs/editor">Editor</a>
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="docs">
+      <nav class="docs-crumb">
+        <a href="/docs/">Docs</a> / Rhai scripting
+      </nav>
+      <h1>Rhai scripting</h1>
+      <p class="docs-lede">
+        Kerabit <strong>2.0</strong> embeds
+        <a href="https://rhai.rs/">Rhai</a> with a rich host API so you can ship
+        small games mostly in <code>.rhai</code>. The public Rust API from 1.0
+        stays frozen. egui stays in <code>kerabit-editor</code>.
+      </p>
+
+      <h2>Try it</h2>
+      <pre class="code"><code>cargo run -p kerabit --example hello_rhai
+cargo run -p spark</code></pre>
+      <p>
+        <strong>hello_rhai</strong> spins a cube.
+        <strong>Spark</strong> is the script-first proof game (WASD, goal pad,
+        hazards) — logic in <code>games/spark/scenes/spark.rhai</code>.
+      </p>
+
+      <h2>Attach a script</h2>
+      <p>
+        Put a path in <code>extras.script</code> (or
+        <code>components.script</code>) on the <strong>scene root</strong> or an
+        <strong>entity</strong>. Paths are relative to the
+        <code>.kerabit.json</code> file for both <code>load_scene</code> and
+        <code>apply_scene</code>.
+      </p>
+      <pre class="code"><code>{
+  "version": 1,
+  "extras": { "script": "game.rhai" },
+  "entities": [{ "name": "player", "extras": { "script": "player.rhai" } }]
+}</code></pre>
+      <p>
+        Prefer <code>fn init()</code> / <code>fn update()</code>. Use
+        <code>set</code> / <code>get</code> / <code>has</code> for persistent
+        values across frames. Entity scripts bind <code>self</code>.
+      </p>
+
+      <h2>When they run</h2>
+      <p>
+        Each frame: Rust <code>run</code> closure, <em>then</em> every loaded
+        script, then render. Missing names are no-ops. Parse errors fail load;
+        runtime errors set <code>ctx.script_error()</code>. Loaded files
+        <strong>hot-reload</strong> when their mtime changes.
+      </p>
+
+      <h2>Host API (Frozen for 2.0)</h2>
+      <ul class="docs-list">
+        <li><code>dt()</code> · <code>quit()</code> · <code>reload_scripts()</code></li>
+        <li><code>key_down</code> / <code>key_pressed</code> · <code>mouse_pos</code> · <code>mouse_button_down</code> / <code>pressed</code></li>
+        <li><code>pos</code> / <code>get_pos</code> · <code>scale</code> · <code>enabled</code> · <code>has_tag</code> · <code>exists</code> · <code>names_with_tag</code></li>
+        <li><code>rotate_*</code> · <code>translate</code> · <code>set_pos</code> · <code>set_scale</code> · <code>set_enabled</code> · <code>add_tag</code> / <code>remove_tag</code></li>
+        <li><code>despawn</code> · <code>spawn_cube</code> / <code>spawn_cube_ex</code> · <code>spawn_plane</code> · <code>spawn_prefab</code></li>
+        <li><code>move_planar</code> · <code>register_box</code> (static AABB from entity scale)</li>
+        <li><code>play</code> / <code>play_at</code> · <code>spawn_particles</code> · <code>set_camera</code></li>
+        <li><code>ui_text</code> / <code>ui_rect</code> (normalized coords; ASCII text only)</li>
+        <li><code>set</code> / <code>get</code> / <code>has</code> — persistent store</li>
+      </ul>
+
+      <h2>Editor</h2>
+      <p>
+        Script menu → Show panel, Check syntax, Reload from disk. Play loads
+        scripts and auto-reloads on file save. Details:
+        <a href="/docs/editor">Editor guide</a>.
+      </p>
+
+      <p class="docs-foot-links">
+        Contract:
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/API.md">API.md</a>
+        · Next: <a href="/docs/editor">Editor guide</a>
+      </p>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="/docs/">All docs</a>
+    </footer>
+  </body>
+</html>

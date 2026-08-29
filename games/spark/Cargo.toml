@@ -1,0 +1,18 @@
+[package]
+name = "spark"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spark — Kerabit 2.0 script-first micro-game (logic in Rhai)"
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "spark"
+path = "src/main.rs"
+
+[dependencies]
+kerabit = { path = "../../crates/kerabit" }
+
+[lints]
+workspace = true

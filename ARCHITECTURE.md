@@ -2,7 +2,7 @@
 
 Kerabit is a multi-crate Cargo workspace. Game authors depend only on **`kerabit`**. Internals may use wgpu/winit; those types must never leak through the public facade.
 
-**Summit moonshot:** phases M0–M9 (PBR, dynamics, editor polish, campaign, 1.0) live in [ROADMAP.md](ROADMAP.md). Install remains rustup + cargo.
+**Summit moonshot:** M0–M9 (1.0) and M10–M15 Scripting Summit (2.0) live in [ROADMAP.md](ROADMAP.md). Install remains rustup + cargo.
 
 ## Crate map
 
@@ -18,7 +18,8 @@ Kerabit is a multi-crate Cargo workspace. Game authors depend only on **`kerabit
 | `kerabit-physics` | AABB / raycast / dynamics / character controller | P6 / M2 |
 | `kerabit-anim` | Clip playback on transform hierarchies | M2 |
 | `kerabit-audio` | Playback / spatial / buses / streaming music | P6 / M3 |
-| `kerabit-editor` (`tools/`) | Dev-only egui level editor | E1–E2 |
+| `kerabit-script` | Rhai runtime + rich host API | 2.0 |
+| `kerabit-editor` (`tools/`) | Dev-only egui level editor + Rhai panel | E1–E2 / 2.0 |
 
 ```
 kerabit
@@ -30,7 +31,8 @@ kerabit
   ├── kerabit-assets     → render
   ├── kerabit-physics    → math
   ├── kerabit-anim       → math, world
-  └── kerabit-audio
+  ├── kerabit-audio
+  └── kerabit-script     → rhai, world, input, math
 
 tools/kerabit-editor → kerabit + kerabit-render (+ egui; not shipped with games)
 ```
@@ -42,10 +44,11 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 
 1. Pump window events → update [`kerabit_input::InputState`]
 2. Clear UI draw list; call game `run` closure with [`Context`](API.md) (`dt`, input, world, camera, physics, audio, `ui`, quit; E0 also wires GPU + renderables for `apply_scene` / `despawn` / `spawn`)
-3. Clear input edges / mouse delta (`end_frame`)
-4. [`World::update_world_matrices`] — dirty local TRS, then parent→child world matrices
-5. Build draw list from **enabled** world entities + per-entity mesh / albedo / roughness (world matrix); despawned entities must leave the renderable map (`Context::despawn` / `clear_world`)
-6. Pack instances by `MeshId`, write instance buffer, then encode **shadow map** (directional depth) → **sky** + **lit** into HDR (PBR-lite, ≤4 lights, PCF soft shadows) → **particles** → **tonemap + bloom** to swapchain → **overlay** (UI), present
+3. Tick loaded Rhai scripts (`kerabit-script`) against the same world / input / quit
+4. Clear input edges / mouse delta (`end_frame`)
+5. [`World::update_world_matrices`] — dirty local TRS, then parent→child world matrices
+6. Build draw list from **enabled** world entities + per-entity mesh / albedo / roughness (world matrix); despawned entities must leave the renderable map (`Context::despawn` / `clear_world`)
+7. Pack instances by `MeshId`, write instance buffer, then encode **shadow map** (directional depth) → **sky** + **lit** into HDR (PBR-lite, ≤4 lights, PCF soft shadows) → **particles** → **tonemap + bloom** to swapchain → **overlay** (UI), present
 
 **EventLoop / reload:** One winit `EventLoop` per process (thread-local + `run_app_on_demand`). Mid-run [`Context::apply_scene`](API.md) clears world + renderables + physics and respawns a `Scene` without recreating the window — preferred for level transitions (Reach) and future editor Play. Re-entering `Kerabit::run` still works but rebuilds App/window.
 
@@ -53,6 +56,7 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 
 **P2 render harnesses** remain: `cargo run -p kerabit-render --example two_meshes`.  
 **P3 flagship:** `cargo run -p kerabit --example playground`.  
+**1.1 / 2.0 Rhai:** `cargo run -p kerabit --example hello_rhai` · proof game: `cargo run -p spark`.  
 **M1 PBR room:** `cargo run -p kerabit --example pbr_room`.  
 **P4 stress:** `cargo run -p kerabit --example many_cubes --release`.  
 **P5 assets:** `cargo run -p kerabit --example load_mesh`.  
@@ -142,6 +146,8 @@ Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
 | M7 Product | **Done** | Docs site, Reach macOS+Windows zips, tag-triggered packaging |
 | M8 Hardening | **Done** | Clippy CI, frustum cull, 16k instances, ~10k cubes |
 | M9 Kerabit 1.0 | **Done** | Workspace `1.0.0`; GitHub Release; site launch |
+| 1.1 Rhai | **Done** | `kerabit-script`; scene `extras.script`; editor code panel |
+| 2.0 Scripting Summit | **Done** | Rich host API; Spark; hot-reload; Frozen for 2.0 table |
 
 ## Deps
 
@@ -162,6 +168,7 @@ Workspace-shared dependencies are declared in the root `Cargo.toml`.
 | `image` | PNG (feature-gated) decode → RGBA8 albedo textures |
 | `rodio` | P6/M3 audio via cpal; **WAV-only** (`default-features = false`, `features = ["wav"]`) — spatial `SpatialSink`, mix buses, streaming music without mp3/flac/vorbis decode bloat |
 | `serde` / `serde_json` | P7 `.kerabit.json` scene save/load mirroring the public spawn API (entities, transforms, mesh primitives/paths, camera, lights) |
+| `rhai` | 1.1 scripting embed (pure Rust; no Lua/C FFI). Host API lives in `kerabit-script`. |
 
 **Not OK:** Bevy/Unity/Godot as deps; bundling another engine; multi-GB assets; ML runtimes; Electron.
 
