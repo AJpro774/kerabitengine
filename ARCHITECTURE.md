@@ -56,7 +56,7 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 
 **P2 render harnesses** remain: `cargo run -p kerabit-render --example two_meshes`.  
 **P3 flagship:** `cargo run -p kerabit --example playground`.  
-**1.1 / 2.0 Rhai:** `cargo run -p kerabit --example hello_rhai` · proof game: `cargo run -p spark`.  
+**2.0 Rhai:** `cargo run -p kerabit --example hello_rhai` · proof game: `cargo run -p spark`.  
 **M1 PBR room:** `cargo run -p kerabit --example pbr_room`.  
 **P4 stress:** `cargo run -p kerabit --example many_cubes --release`.  
 **P5 assets:** `cargo run -p kerabit --example load_mesh`.  
@@ -168,7 +168,7 @@ Workspace-shared dependencies are declared in the root `Cargo.toml`.
 | `image` | PNG (feature-gated) decode → RGBA8 albedo textures |
 | `rodio` | P6/M3 audio via cpal; **WAV-only** (`default-features = false`, `features = ["wav"]`) — spatial `SpatialSink`, mix buses, streaming music without mp3/flac/vorbis decode bloat |
 | `serde` / `serde_json` | P7 `.kerabit.json` scene save/load mirroring the public spawn API (entities, transforms, mesh primitives/paths, camera, lights) |
-| `rhai` | 1.1 scripting embed (pure Rust; no Lua/C FFI). Host API lives in `kerabit-script`. |
+| `rhai` | 2.0 scripting embed (pure Rust; no Lua/C FFI). Host API lives in `kerabit-script`. |
 
 **Not OK:** Bevy/Unity/Godot as deps; bundling another engine; multi-GB assets; ML runtimes; Electron.
 

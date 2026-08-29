@@ -6,7 +6,7 @@ This document is the **stable target** for game-facing types. Changes require up
 
 ## 1.0 freeze
 
-Breaking a **Frozen for 1.0** item requires a semver bump and a [CHANGELOG.md](CHANGELOG.md) entry in the same change. Experimental surfaces may change without a major bump.
+Breaking a **Frozen for 1.0** or **Frozen for 2.0** item requires a semver bump and a [CHANGELOG.md](CHANGELOG.md) entry in the same change. Experimental surfaces may change without a major bump.
 
 | Surface | Status | Notes |
 |---------|--------|-------|
@@ -84,8 +84,8 @@ fn main() {
 | `Camera`, `Light`, `LightKind`, `MAX_LIGHTS` | **P3/M1** | `perspective` + `look_at`; `Light::sun` / `point` + intensity/range; up to **4** lights |
 | `ParticleBurst` | **M1** | Billboard burst via `ctx.spawn_particles` |
 | `Key`, `MouseButton`, `InputState` | **P3** | `key_down` / `key_pressed`; mouse pos / delta / buttons |
-| `Context` | **P3/P6/UI/E0/M1/M3/1.1** | `dt`, `input`, `world` / `world_mut`, `camera` / `camera_mut`, `physics`, `audio`, `ui`, `quit`; runtime `clear_world` / `despawn` / `spawn` / `apply_scene` / `load_scene`; `lights` / `set_lights` / `spawn_particles`; `sync_audio_listener`; `script_error` |
-| `ScriptRuntime`, `ScriptError` | **1.1** | Rhai; `Kerabit::script`; scene `extras.script` |
+| `Context` | **P3/P6/UI/E0/M1/M3/2.0** | `dt`, `input`, `world` / `world_mut`, `camera` / `camera_mut`, `physics`, `audio`, `ui`, `quit`; runtime `clear_world` / `despawn` / `spawn` / `apply_scene` / `load_scene`; `lights` / `set_lights` / `spawn_particles`; `sync_audio_listener`; `script_error` |
+| `ScriptRuntime`, `ScriptError` | **2.0** | Rich Rhai host; `Kerabit::script`; scene `extras.script`; hot-reload |
 | `Ui` | **UI** | Immediate-mode overlay: `text` / `rect` via `ctx.ui()` |
 | `World`, `Transform`, `EntityId`, `LAYER_DEFAULT` | **P4/E0/M2** | Hierarchy; enable/disable; tags / layer queries |
 | `PhysicsWorld`, `Aabb`, `ColliderId`, `RayHit`, `SphereCastHit`, `MoveResult` | **P6/E0** | Static AABBs; ray/sphere cast; kinematic block; `clear` |
@@ -172,7 +172,7 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 - **Lighting / sky (E5 + M1):** Scene authors one directional **sun** (`light.direction` / `intensity` / `color`) plus `ambient` and `clear_color`. Runtime code may set up to **4** lights via `Kerabit::lights` / `ctx.set_lights` (dir + point); soft shadows still follow the first directional only. The renderer paints a **sky gradient** using `clear_color` as the horizon (zenith is derived).
 - **Materials (M1):** optional additive `"metallic"` on scene materials (default `0`); `SCENE_VERSION` stays **1**.
 - **Entity tags (E3):** each entity may include `"tags": ["player", "wall", …]` (string list). Omitted or `[]` means no tags. `SCENE_VERSION` stays **1** (additive field). Shared roles: `player`, `goal`, `ground`, `wall`, `hazard` — prefer tags; legacy name exact match / `wall_*` / `hazard_*` prefixes still work for one version. `SceneEntity::has_tag`
-- **Reserved bags (M0 / 1.1):** optional `"components"` and `"extras"` JSON objects on the **scene root** and each **entity**. `SCENE_VERSION` stays **1**. Types: `SceneMap` / `Scene::{components,extras}` / `SceneEntity::{components,extras}`. **1.1:** `"script": "file.rhai"` in `extras` or `components` (path relative to the scene file). Scene-level scripts have no `self`; entity scripts bind `self` to the entity name. `Scene::script_attachments` / `map_script_path`.
+- **Reserved bags (M0 / 2.0):** optional `"components"` and `"extras"` JSON objects on the **scene root** and each **entity**. `SCENE_VERSION` stays **1**. Types: `SceneMap` / `Scene::{components,extras}` / `SceneEntity::{components,extras}`. **`"script": "file.rhai"`** in `extras` or `components` (path relative to the scene file). Scene-level scripts have no `self`; entity scripts bind `self` to the entity name. `Scene::script_attachments` / `map_script_path`.
 - **Surge motion tags (E7):** on `hazard` entities, optional `orbit` / `slide_x` / `slide_z` select patrol style for the score-attack arenas (`games/surge`)
 - `Kerabit::load_scene(path)` / `Kerabit::scene(Scene)` / `Scene::into_kerabit(title)`
 - **Prefabs (M4):** `Prefab::load` / `save` / `from_json` / `to_json` / `instantiate(scene, offset)` — `.kerabit.prefab.json` (version + entities only; same entity wire format as scenes). Editor: File → Save Prefab / Instance Prefab. Samples under `games/reach/prefabs/`.

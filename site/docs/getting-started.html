@@ -25,6 +25,7 @@
       <nav class="nav-links">
         <a href="/docs/">Docs</a>
         <a href="/docs/api-tour">API tour</a>
+        <a href="/docs/scripting">Scripting</a>
         <a href="/docs/editor">Editor</a>
         <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
       </nav>
@@ -36,7 +37,8 @@
       </nav>
       <h1>Getting Started</h1>
       <p class="docs-lede">
-        Stranger path: this site → clone → hello cube → editor. Budget about
+        Stranger path: this site → clone → hello cube →
+        <code>hello_rhai</code> / <strong>Spark</strong> → editor. Budget about
         <strong>30 minutes</strong> on a machine with a working GPU driver
         (Metal / Vulkan / DX12 via wgpu).
       </p>
@@ -72,20 +74,29 @@ cd kerabitengine</code></pre>
           </p>
         </li>
         <li>
-          <h2>4. Open the editor</h2>
+          <h2>4. Scripting (2.0)</h2>
+          <pre class="code"><code>cargo run -p kerabit --example hello_rhai
+cargo run -p spark</code></pre>
+          <p>
+            <code>hello_rhai</code> spins a cube from a <code>.rhai</code> file.
+            <strong>Spark</strong> is a short script-first game. Host API:
+            <a href="/docs/scripting">Rhai scripting</a>.
+          </p>
+        </li>
+        <li>
+          <h2>5. Open the editor</h2>
           <pre class="code"><code>cargo run -p kerabit-editor</code></pre>
           <p>
             File → Open a level under <code>games/reach/levels/</code>. Orbit with
             right mouse, select an entity, press <kbd>W</kbd> for the move gizmo.
-            See the <a href="/docs/editor">Editor guide</a> for Play, undo, and
-            prefabs.
+            See the <a href="/docs/editor">Editor guide</a> for Play, undo, Script
+            panel, and prefabs.
           </p>
         </li>
         <li>
-          <h2>5. Play the flagship game (optional)</h2>
+          <h2>6. Play the flagship games (optional)</h2>
           <pre class="code"><code>cargo run -p reach
 cargo run -p surge
-# Visual trailer scene (when present):
 cargo run -p showcase</code></pre>
           <p>
             Players who only want Reach can grab a zip from
