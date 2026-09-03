@@ -176,8 +176,9 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 - **Surge motion tags (E7):** on `hazard` entities, optional `orbit` / `slide_x` / `slide_z` select patrol style for the score-attack arenas (`games/surge`)
 - `Kerabit::load_scene(path)` / `Kerabit::scene(Scene)` / `Scene::into_kerabit(title)`
 - **Prefabs (M4):** `Prefab::load` / `save` / `from_json` / `to_json` / `instantiate(scene, offset)` — `.kerabit.prefab.json` (version + entities only; same entity wire format as scenes). Editor: File → Save Prefab / Instance Prefab. Samples under `games/reach/prefabs/`.
-- Checked-in levels: `games/reach/levels/*.kerabit.json` (flagship, 5 levels); `games/surge/levels/*.kerabit.json` (score-attack, 2 arenas); author in `kerabit-editor`; `examples/scenes/mini_game.kerabit.json` (legacy)
+- Checked-in levels: `games/reach/levels/*.kerabit.json` (flagship, 16 levels); `games/surge/levels/*.kerabit.json` (score-attack, 5 arenas); author in `kerabit-editor`; `examples/scenes/mini_game.kerabit.json` (legacy)
 - Play: `cargo run -p reach` · `cargo run -p surge` · legacy: `cargo run -p kerabit --example mini_game` · editor: `cargo run -p kerabit-editor`
+- Relative `obj` / `gltf` / texture paths in a scene or prefab file resolve against that file's directory (`Scene::load` / `Prefab::load`)
 
 ### Runtime Scene reload (E0)
 

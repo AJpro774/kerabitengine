@@ -40,7 +40,9 @@ PKG="$ROOT/games/reach/packaging"
 ICON_ICNS="$PKG/AppIcon.icns"
 ICON_SRC="$PKG/AppIcon.png"
 
-TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["target_directory"])')"
+META="$(cargo metadata --no-deps --format-version 1)"
+TARGET_DIR="$(python3 -c 'import sys,json; print(json.load(sys.stdin)["target_directory"])' <<<"$META")"
+VERSION="$(python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(p["version"] for p in d["packages"] if p["name"]=="reach"))' <<<"$META")"
 BIN_SRC="$TARGET_DIR/release/reach"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -106,7 +108,7 @@ cp -R "$ROOT/games/reach/levels" "$RESOURCES/levels"
 cp -R "$ROOT/games/reach/assets" "$RESOURCES/assets"
 cp "$ICON_ICNS" "$RESOURCES/AppIcon.icns"
 
-cat > "$CONTENTS/Info.plist" <<'PLIST'
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -128,9 +130,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>${VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>0.1.0</string>
+  <string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key>
   <string>11.0</string>
   <key>NSHighResolutionCapable</key>

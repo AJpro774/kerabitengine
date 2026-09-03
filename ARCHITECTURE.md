@@ -61,7 +61,7 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 **P4 stress:** `cargo run -p kerabit --example many_cubes --release`.  
 **P5 assets:** `cargo run -p kerabit --example load_mesh`.  
 **P6 physics + audio:** `cargo run -p kerabit --example physics_audio`.  
-**Flagship game:** `cargo run -p reach` (`games/reach`, 12 `.kerabit.json` levels + HUD overlay; in-process `apply_scene` between levels).
+**Flagship game:** `cargo run -p reach` (`games/reach`, 16 `.kerabit.json` levels + HUD overlay; in-process `apply_scene` between levels).
 **Second game (E7/M6):** `cargo run -p surge` (`games/surge`, timed ranked + endless; 5 arenas; public API + shared tags + `orbit`/`slide_*` motion tags).
 **Showcase (M6):** `cargo run -p showcase` — non-game Summit render trailer (PBR, lights, particles).
 **P7 legacy slice:** `cargo run -p kerabit --example mini_game` (loads `examples/scenes/mini_game.kerabit.json`).
@@ -69,7 +69,7 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 ## GPU resource model (P1–P4, E5, M1)
 
 - **Frame uniforms**: view-proj, camera, ambient, light view-proj, shadow params + **up to 4 lights** (`FrameUniforms` / `lit.wgsl`)
-- **Instance buffer**: model + albedo + roughness + metallic (`InstanceRaw`); batches by mesh + albedo + normal tex (≤2048 instances/frame)
+- **Instance buffer**: model + albedo + roughness + metallic (`InstanceRaw`); batches by mesh + albedo + normal tex (≤16384 instances/frame)
 - **Mesh GPU cache**: CPU `Mesh` → content-hash dedupe → `MeshId` → vertex/index buffers
 - **Material**: albedo / roughness / metallic in instance attrs; albedo + normal bind group (white / flat-normal defaults)
 - **Depth texture** resized on rescale

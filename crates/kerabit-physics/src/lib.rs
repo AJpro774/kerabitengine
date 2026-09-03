@@ -646,4 +646,46 @@ mod tests {
         assert!(result.hit);
         assert!(cc.position.x < 1.2);
     }
+
+    #[test]
+    fn falling_while_touching_a_wall_is_not_blocked() {
+        let mut phys = PhysicsWorld::new();
+        // Tall wall whose min.x is 1.0. A 0.4-half character centered at x=0.6
+        // is touching that face (max.x = 1.0) while still in the air.
+        phys.add_aabb(Aabb::from_center_half_extents(
+            vec3(1.5, 2.0, 0.0),
+            vec3(0.5, 2.0, 0.5),
+        ));
+        let half = vec3(0.4, 0.4, 0.4);
+        let start = vec3(0.6, 3.0, 0.0);
+        let result = phys.move_and_collide(start, vec3(0.0, -10.0, 0.0), half, 0.1);
+        assert!(
+            result.position.y < start.y - 0.5,
+            "expected to fall beside the wall, y={} (start {})",
+            result.position.y,
+            start.y
+        );
+    }
+
+    #[test]
+    fn air_next_to_wall_is_not_grounded() {
+        let mut phys = PhysicsWorld::new();
+        phys.add_aabb(Aabb::from_center_half_extents(
+            vec3(1.5, 2.0, 0.0),
+            vec3(0.5, 2.0, 0.5),
+        ));
+        let mut cc = CharacterController::new(vec3(0.6, 3.0, 0.0), vec3(0.4, 0.4, 0.4));
+        cc.gravity = 20.0;
+        let result = cc.move_wish(&phys, Vec3::ZERO, false, 1.0 / 60.0);
+        assert!(
+            !result.grounded,
+            "falling next to a wall must not count as grounded (y={})",
+            cc.position.y
+        );
+        assert!(
+            cc.position.y < 3.0,
+            "should start falling, y={}",
+            cc.position.y
+        );
+    }
 }
