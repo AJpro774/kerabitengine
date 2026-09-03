@@ -167,9 +167,17 @@ impl Default for Scene {
 
 impl Scene {
     /// Load a `.kerabit.json` file from disk.
+    ///
+    /// Relative mesh / texture paths are resolved against the scene file's
+    /// directory so `build_entities` works regardless of the process CWD.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, SceneError> {
+        let path = path.as_ref();
         let text = fs::read_to_string(path)?;
-        Self::from_json(&text)
+        let mut scene = Self::from_json(&text)?;
+        if let Some(dir) = path.parent() {
+            scene.rebase_relative_assets(dir);
+        }
+        Ok(scene)
     }
 
     /// Parse scene JSON text.
@@ -188,8 +196,16 @@ impl Scene {
     }
 
     /// Write a `.kerabit.json` file.
+    ///
+    /// Mesh / texture paths that live under the destination directory are
+    /// written relative to it so load+save does not bake absolute paths.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), SceneError> {
-        fs::write(path, self.to_json()?)?;
+        let path = path.as_ref();
+        let mut scene = self.clone();
+        if let Some(dir) = path.parent() {
+            scene.relativize_assets(dir);
+        }
+        fs::write(path, scene.to_json()?)?;
         Ok(())
     }
 
@@ -207,6 +223,20 @@ impl Scene {
             }
         }
         Prefab { entities }
+    }
+
+    fn rebase_relative_assets(&mut self, dir: &Path) {
+        for e in &mut self.entities {
+            rebase_mesh(&mut e.mesh, Some(dir));
+            rebase_material(&mut e.material, Some(dir));
+        }
+    }
+
+    fn relativize_assets(&mut self, dir: &Path) {
+        for e in &mut self.entities {
+            relativize_mesh(&mut e.mesh, dir);
+            relativize_material(&mut e.material, dir);
+        }
     }
 
     /// Convert scene entities into spawn descriptors (resolves asset paths).
@@ -243,9 +273,20 @@ pub struct Prefab {
 
 impl Prefab {
     /// Load a `.kerabit.prefab.json` file from disk.
+    ///
+    /// Relative mesh / texture paths are resolved against the prefab file's
+    /// directory so instancing works regardless of the process CWD.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, SceneError> {
+        let path = path.as_ref();
         let text = fs::read_to_string(path)?;
-        Self::from_json(&text)
+        let mut prefab = Self::from_json(&text)?;
+        if let Some(dir) = path.parent() {
+            for e in &mut prefab.entities {
+                rebase_mesh(&mut e.mesh, Some(dir));
+                rebase_material(&mut e.material, Some(dir));
+            }
+        }
+        Ok(prefab)
     }
 
     /// Parse prefab JSON text.
@@ -270,7 +311,15 @@ impl Prefab {
 
     /// Write a `.kerabit.prefab.json` file.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), SceneError> {
-        fs::write(path, self.to_json()?)?;
+        let path = path.as_ref();
+        let mut prefab = self.clone();
+        if let Some(dir) = path.parent() {
+            for e in &mut prefab.entities {
+                relativize_mesh(&mut e.mesh, dir);
+                relativize_material(&mut e.material, dir);
+            }
+        }
+        fs::write(path, prefab.to_json()?)?;
         Ok(())
     }
 
@@ -734,6 +783,51 @@ fn quat_to_arr(q: Quat) -> [f32; 4] {
     [q.x, q.y, q.z, q.w]
 }
 
+/// Resolve a mesh / texture path against the scene or prefab directory.
+fn resolve_asset_path(base: Option<&Path>, path: &Path) -> PathBuf {
+    if path.as_os_str().is_empty() || path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(dir) = base {
+        dir.join(path)
+    } else {
+        path.to_path_buf()
+    }
+}
+
+fn rebase_mesh(mesh: &mut SceneMesh, base: Option<&Path>) {
+    match mesh {
+        SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+            *path = resolve_asset_path(base, path);
+        }
+        SceneMesh::Cube | SceneMesh::Plane { .. } => {}
+    }
+}
+
+fn rebase_material(material: &mut SceneMaterial, base: Option<&Path>) {
+    if let Some(path) = material.texture.take() {
+        material.texture = Some(resolve_asset_path(base, &path));
+    }
+}
+
+fn relativize_path(dir: &Path, path: &Path) -> PathBuf {
+    path.strip_prefix(dir).unwrap_or(path).to_path_buf()
+}
+
+fn relativize_mesh(mesh: &mut SceneMesh, dir: &Path) {
+    match mesh {
+        SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+            *path = relativize_path(dir, path);
+        }
+        SceneMesh::Cube | SceneMesh::Plane { .. } => {}
+    }
+}
+
+fn relativize_material(material: &mut SceneMaterial, dir: &Path) {
+    if let Some(path) = material.texture.take() {
+        material.texture = Some(relativize_path(dir, &path));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -929,6 +1023,55 @@ mod tests {
         assert_eq!(round, scene);
         let entities = scene.build_entities().expect("build spawn descriptors");
         assert_eq!(entities.len(), 7);
+    }
+
+    #[test]
+    fn load_resolves_obj_path_relative_to_scene_file() {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../kerabit-assets/fixtures");
+        let tmp = std::env::temp_dir().join(format!(
+            "kerabit-scene-rel-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("temp scene dir");
+        fs::copy(fixtures.join("box.obj"), tmp.join("box.obj")).expect("copy obj");
+        let scene_path = tmp.join("rel.kerabit.json");
+        fs::write(
+            &scene_path,
+            r#"{
+              "version": 1,
+              "camera": {"fov_y": 60, "eye": [0, 0, 5], "target": [0, 0, 0]},
+              "light": {"direction": [0, -1, 0]},
+              "entities": [
+                {"name": "box", "mesh": {"type": "obj", "path": "box.obj"}}
+              ]
+            }"#,
+        )
+        .expect("write scene");
+
+        let scene = Scene::load(&scene_path).expect("load scene next to obj");
+        match &scene.entities[0].mesh {
+            SceneMesh::Obj { path } => {
+                assert!(
+                    path.is_absolute() && path.ends_with("box.obj"),
+                    "expected scene-dir join, got {}",
+                    path.display()
+                );
+                assert!(path.is_file(), "resolved obj missing: {}", path.display());
+            }
+            other => panic!("expected obj mesh, got {other:?}"),
+        }
+        scene
+            .build_entities()
+            .expect("relative obj path must resolve against the scene directory");
+        let saved = tmp.join("saved.kerabit.json");
+        scene.save(&saved).expect("save");
+        let written = fs::read_to_string(&saved).expect("read saved scene");
+        assert!(
+            written.contains("box.obj") && !written.contains(tmp.to_string_lossy().as_ref()),
+            "save should keep a relative mesh path, got:\n{written}"
+        );
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
