@@ -1,42 +1,30 @@
 //! Offscreen lit pass for embedding kerabit-render scenes in host windows
-//! (e.g. egui viewports). Owns color+depth targets; no winit surface.
+//! (e.g. egui viewports). Runs the same [`SceneRenderer`] chain as games,
+//! tonemaps into an sRGB color target, and blits it into a host render pass.
 
 use kerabit_color::Color;
 
 use crate::camera::Camera;
 use crate::light::Light;
 use crate::mesh::Mesh;
-use crate::mesh_gpu::{MeshCache, MeshId};
-use crate::shadow::{directional_light_matrix, ShadowMap, SHADOW_HALF_EXTENT};
-use crate::sky::SkyPass;
-use crate::texture::{TextureCache, TextureId};
-use crate::uniforms::{
-    frustum_cull_draws, pack_draw_batches, DrawItem, FrameUniforms, InstanceRaw, MAX_INSTANCES,
-};
-use crate::vertex::Vertex;
+use crate::mesh_gpu::MeshId;
+use crate::post::PostStack;
+use crate::scene_renderer::SceneRenderer;
+use crate::texture::TextureId;
+use crate::uniforms::{DrawItem, RenderSettings};
 
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-const SHADER_LIT: &str = include_str!("../shaders/lit.wgsl");
 const SHADER_BLIT: &str = include_str!("../shaders/blit.wgsl");
 
-/// Lit scene renderer targeting an offscreen color texture (plus depth).
+/// Lit scene renderer targeting an offscreen color texture.
 pub struct OffscreenLitRenderer {
     pub clear_color: Color,
-    pipeline: wgpu::RenderPipeline,
-    frame_buffer: wgpu::Buffer,
-    instance_buffer: wgpu::Buffer,
-    frame_bind_group: wgpu::BindGroup,
-    mesh_cache: MeshCache,
-    texture_cache: TextureCache,
-    shadow: ShadowMap,
-    sky: SkyPass,
+    renderer: SceneRenderer,
+    post: PostStack,
     width: u32,
     height: u32,
-    color_texture: wgpu::Texture,
+    _color_texture: wgpu::Texture,
     color_view: wgpu::TextureView,
-    _depth_texture: wgpu::Texture,
-    depth_view: wgpu::TextureView,
     /// Blit into a host render pass (egui surface).
     blit_pipeline: wgpu::RenderPipeline,
     blit_bgl: wgpu::BindGroupLayout,
@@ -54,101 +42,9 @@ impl OffscreenLitRenderer {
         blit_target_format: wgpu::TextureFormat,
         clear_color: Color,
     ) -> Self {
-        let texture_cache = TextureCache::new(device, queue);
-        let shadow = ShadowMap::new(device);
-        let sky = SkyPass::new(device, COLOR_FORMAT);
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("offscreen-lit"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_LIT.into()),
-        });
-
-        let frame_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("offscreen-frame-bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("offscreen-lit-layout"),
-            bind_group_layouts: &[
-                &frame_bgl,
-                texture_cache.bind_group_layout(),
-                &shadow.bind_group_layout,
-            ],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("offscreen-lit-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::layout(), InstanceRaw::layout()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: COLOR_FORMAT,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        let frame_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("offscreen-frame-uniforms"),
-            size: std::mem::size_of::<FrameUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("offscreen-instance-buffer"),
-            size: (std::mem::size_of::<InstanceRaw>() * MAX_INSTANCES) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let frame_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("offscreen-frame-bg"),
-            layout: &frame_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: frame_buffer.as_entire_binding(),
-            }],
-        });
+        let renderer = SceneRenderer::new(device, queue, 1, 1);
+        let mut post = PostStack::new(device, COLOR_FORMAT, 1, 1);
+        post.set_source(device, renderer.output_view());
 
         let blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("blit"),
@@ -212,25 +108,17 @@ impl OffscreenLitRenderer {
             ..Default::default()
         });
 
-        let (color_texture, color_view, depth_texture, depth_view) = create_targets(device, 1, 1);
+        let (color_texture, color_view) = create_color_target(device, 1, 1);
         let blit_bind_group = make_blit_bind_group(device, &blit_bgl, &color_view, &blit_sampler);
 
         Self {
             clear_color,
-            pipeline,
-            frame_buffer,
-            instance_buffer,
-            frame_bind_group,
-            mesh_cache: MeshCache::new(),
-            texture_cache,
-            shadow,
-            sky,
+            renderer,
+            post,
             width: 1,
             height: 1,
-            color_texture,
+            _color_texture: color_texture,
             color_view,
-            _depth_texture: depth_texture,
-            depth_view,
             blit_pipeline,
             blit_bgl,
             blit_sampler,
@@ -239,7 +127,7 @@ impl OffscreenLitRenderer {
     }
 
     pub fn upload_mesh(&mut self, device: &wgpu::Device, mesh: &Mesh) -> MeshId {
-        self.mesh_cache.upload(device, mesh)
+        self.renderer.mesh_cache.upload(device, mesh)
     }
 
     pub fn upload_texture_rgba8(
@@ -250,12 +138,18 @@ impl OffscreenLitRenderer {
         height: u32,
         rgba: &[u8],
     ) -> TextureId {
-        self.texture_cache
+        self.renderer
+            .texture_cache
             .upload_rgba8(device, queue, width, height, rgba)
     }
 
     pub fn white_texture(&self) -> TextureId {
-        self.texture_cache.white()
+        self.renderer.texture_cache.white()
+    }
+
+    /// Toggle SSAO / IBL / SSR / TAA for the viewport.
+    pub fn settings_mut(&mut self) -> &mut RenderSettings {
+        &mut self.renderer.settings
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
@@ -266,12 +160,12 @@ impl OffscreenLitRenderer {
         }
         self.width = width;
         self.height = height;
-        let (color_texture, color_view, depth_texture, depth_view) =
-            create_targets(device, width, height);
-        self.color_texture = color_texture;
+        self.renderer.resize(device, width, height);
+        self.post.resize(device, width, height);
+        self.post.set_source(device, self.renderer.output_view());
+        let (color_texture, color_view) = create_color_target(device, width, height);
+        self._color_texture = color_texture;
         self.color_view = color_view;
-        self._depth_texture = depth_texture;
-        self.depth_view = depth_view;
         self.blit_bind_group =
             make_blit_bind_group(device, &self.blit_bgl, &self.color_view, &self.blit_sampler);
     }
@@ -280,7 +174,8 @@ impl OffscreenLitRenderer {
         (self.width, self.height)
     }
 
-    /// Encode shadow → sky → lit into `encoder` (color+depth offscreen).
+    /// Encode the full scene chain + tonemap into the offscreen color target.
+    #[allow(clippy::too_many_arguments)]
     pub fn encode_lit(
         &mut self,
         device: &wgpu::Device,
@@ -291,95 +186,18 @@ impl OffscreenLitRenderer {
         ambient: Color,
         draws: &[DrawItem],
     ) {
-        camera.set_aspect(self.width as f32 / self.height.max(1) as f32);
-        let light_vp = directional_light_matrix(light.direction, camera.target, SHADOW_HALF_EXTENT);
-        let frame = FrameUniforms::from_scene(camera, light, ambient, light_vp);
-        queue.write_buffer(&self.frame_buffer, 0, bytemuck::bytes_of(&frame));
-
-        let white = self.texture_cache.white();
-        let flat_n = self.texture_cache.flat_normal();
-        let visible = frustum_cull_draws(camera.view_proj(), draws, |id| {
-            self.mesh_cache.local_aabb(id)
-        });
-        let (flat, ranges) = pack_draw_batches(&visible, white, flat_n);
-        if !flat.is_empty() {
-            queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&flat));
-        }
-
-        let shadow_ranges: Vec<(MeshId, u32, u32)> = ranges
-            .iter()
-            .map(|&(mesh, _, _, start, count)| (mesh, start, count))
-            .collect();
-
-        for &(_, albedo, normal, _, _) in &ranges {
-            let _ = self
-                .texture_cache
-                .ensure_material_bind_group(device, albedo, normal);
-        }
-
-        self.shadow.encode(
+        self.renderer.encode_scene(
+            device,
             queue,
             encoder,
-            light_vp,
-            &self.mesh_cache,
-            &self.instance_buffer,
-            &shadow_ranges,
-        );
-
-        self.sky.encode(
-            queue,
-            encoder,
-            &self.color_view,
-            &self.depth_view,
+            camera,
+            std::slice::from_ref(light),
+            ambient,
             self.clear_color,
+            draws,
         );
-
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("offscreen-lit-pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.color_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.frame_bind_group, &[]);
-            pass.set_bind_group(2, &self.shadow.bind_group, &[]);
-
-            for (mesh_id, albedo, normal, start, count) in ranges {
-                let Some(gpu_mesh) = self.mesh_cache.get(mesh_id) else {
-                    continue;
-                };
-                let Some(tex_bg) = self.texture_cache.material_bind_group(albedo, normal) else {
-                    continue;
-                };
-                let byte_offset = start as u64 * std::mem::size_of::<InstanceRaw>() as u64;
-                let byte_size = count as u64 * std::mem::size_of::<InstanceRaw>() as u64;
-                pass.set_bind_group(1, tex_bg, &[]);
-                pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-                pass.set_vertex_buffer(
-                    1,
-                    self.instance_buffer.slice(byte_offset..byte_offset + byte_size),
-                );
-                pass.set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                pass.draw_indexed(0..gpu_mesh.index_count, 0, 0..count);
-            }
-        }
+        self.renderer.encode_finish(encoder);
+        self.post.encode(queue, encoder, &self.color_view);
     }
 
     /// Draw the offscreen color target into an existing render pass (egui).
@@ -390,16 +208,7 @@ impl OffscreenLitRenderer {
     }
 }
 
-fn create_targets(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-) -> (
-    wgpu::Texture,
-    wgpu::TextureView,
-    wgpu::Texture,
-    wgpu::TextureView,
-) {
+fn create_color_target(device: &wgpu::Device, width: u32, height: u32) -> (wgpu::Texture, wgpu::TextureView) {
     let color_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("offscreen-color"),
         size: wgpu::Extent3d {
@@ -415,24 +224,7 @@ fn create_targets(
         view_formats: &[],
     });
     let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-    let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("offscreen-depth"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: DEPTH_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    });
-    let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-    (color_texture, color_view, depth_texture, depth_view)
+    (color_texture, color_view)
 }
 
 fn make_blit_bind_group(

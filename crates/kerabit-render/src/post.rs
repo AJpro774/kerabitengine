@@ -1,7 +1,8 @@
 //! Cheap bloom + ACES tonemap post stack (M1).
 //!
-//! Scene renders into an HDR color target; post extracts brights, blurs at half
-//! resolution, then composites with tonemap onto the swapchain.
+//! Reads the scene renderer's resolved HDR target (set via [`PostStack::set_source`]),
+//! extracts brights, blurs at half resolution, then composites with tonemap
+//! onto the swapchain / capture target.
 
 const SHADER_POST: &str = include_str!("../shaders/post.wgsl");
 
@@ -14,10 +15,9 @@ struct BlurParams {
     dir: [f32; 4],
 }
 
-/// Owns HDR scene target + half-res bloom ping-pong + post pipelines.
+/// Owns the half-res bloom ping-pong + post pipelines; samples an external HDR source.
 pub struct PostStack {
-    pub hdr_view: wgpu::TextureView,
-    _hdr_texture: wgpu::Texture,
+    src_view: Option<wgpu::TextureView>,
     bloom_a_view: wgpu::TextureView,
     _bloom_a: wgpu::Texture,
     bloom_b_view: wgpu::TextureView,
@@ -33,10 +33,10 @@ pub struct PostStack {
     composite_pipeline: wgpu::RenderPipeline,
     blur_buffer: wgpu::Buffer,
     blur_bind_group: wgpu::BindGroup,
-    extract_bg: wgpu::BindGroup,
+    extract_bg: Option<wgpu::BindGroup>,
     blur_src_a_bg: wgpu::BindGroup,
     blur_src_b_bg: wgpu::BindGroup,
-    composite_bg: wgpu::BindGroup,
+    composite_bg: Option<wgpu::BindGroup>,
 }
 
 impl PostStack {
@@ -236,19 +236,13 @@ impl PostStack {
             }],
         });
 
-        let (hdr_texture, hdr_view, bloom_a, bloom_a_view, bloom_b, bloom_b_view) =
-            create_targets(device, width, height);
+        let (bloom_a, bloom_a_view, bloom_b, bloom_b_view) = create_targets(device, width, height);
 
-        let extract_bg = make_tex_bg(device, &tex_bgl, &hdr_view, &sampler, "post-extract-bg");
         let blur_src_a_bg = make_tex_bg(device, &tex_bgl, &bloom_a_view, &sampler, "post-blur-a-bg");
         let blur_src_b_bg = make_tex_bg(device, &tex_bgl, &bloom_b_view, &sampler, "post-blur-b-bg");
-        // Final blur lands in bloom_a (after vertical pass).
-        let composite_bg =
-            make_composite_bg(device, &composite_bgl, &hdr_view, &bloom_a_view, &sampler);
 
         Self {
-            hdr_view,
-            _hdr_texture: hdr_texture,
+            src_view: None,
             bloom_a_view,
             _bloom_a: bloom_a,
             bloom_b_view,
@@ -264,11 +258,25 @@ impl PostStack {
             composite_pipeline,
             blur_buffer,
             blur_bind_group,
-            extract_bg,
+            extract_bg: None,
             blur_src_a_bg,
             blur_src_b_bg,
-            composite_bg,
+            composite_bg: None,
         }
+    }
+
+    /// Bind the HDR texture this stack tonemaps (call after creating / resizing the scene targets).
+    pub fn set_source(&mut self, device: &wgpu::Device, src: &wgpu::TextureView) {
+        self.src_view = Some(src.clone());
+        self.extract_bg = Some(make_tex_bg(device, &self.tex_bgl, src, &self.sampler, "post-extract-bg"));
+        // Final blur lands in bloom_a (after the vertical pass).
+        self.composite_bg = Some(make_composite_bg(
+            device,
+            &self.composite_bgl,
+            src,
+            &self.bloom_a_view,
+            &self.sampler,
+        ));
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
@@ -279,16 +287,14 @@ impl PostStack {
         }
         self.width = width;
         self.height = height;
-        let (hdr_texture, hdr_view, bloom_a, bloom_a_view, bloom_b, bloom_b_view) =
-            create_targets(device, width, height);
-        self._hdr_texture = hdr_texture;
-        self.hdr_view = hdr_view;
+        let (bloom_a, bloom_a_view, bloom_b, bloom_b_view) = create_targets(device, width, height);
         self._bloom_a = bloom_a;
         self.bloom_a_view = bloom_a_view;
         self._bloom_b = bloom_b;
         self.bloom_b_view = bloom_b_view;
-        self.extract_bg =
-            make_tex_bg(device, &self.tex_bgl, &self.hdr_view, &self.sampler, "post-extract-bg");
+        if let Some(src) = self.src_view.clone() {
+            self.set_source(device, &src);
+        }
         self.blur_src_a_bg = make_tex_bg(
             device,
             &self.tex_bgl,
@@ -303,13 +309,6 @@ impl PostStack {
             &self.sampler,
             "post-blur-b-bg",
         );
-        self.composite_bg = make_composite_bg(
-            device,
-            &self.composite_bgl,
-            &self.hdr_view,
-            &self.bloom_a_view,
-            &self.sampler,
-        );
     }
 
     /// Extract → blur H/V → tonemap+bloom into `surface_view`.
@@ -319,6 +318,9 @@ impl PostStack {
         encoder: &mut wgpu::CommandEncoder,
         surface_view: &wgpu::TextureView,
     ) {
+        let (Some(extract_bg), Some(composite_bg)) = (&self.extract_bg, &self.composite_bg) else {
+            return;
+        };
         let bw = (self.width / 2).max(1) as f32;
         let bh = (self.height / 2).max(1) as f32;
 
@@ -338,7 +340,7 @@ impl PostStack {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.extract_pipeline);
-            pass.set_bind_group(0, &self.extract_bg, &[]);
+            pass.set_bind_group(0, extract_bg, &[]);
             pass.draw(0..3, 0..1);
         }
 
@@ -416,7 +418,7 @@ impl PostStack {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.composite_pipeline);
-            pass.set_bind_group(0, &self.composite_bg, &[]);
+            pass.set_bind_group(0, composite_bg, &[]);
             pass.draw(0..3, 0..1);
         }
     }
@@ -431,25 +433,7 @@ fn create_targets(
     wgpu::TextureView,
     wgpu::Texture,
     wgpu::TextureView,
-    wgpu::Texture,
-    wgpu::TextureView,
 ) {
-    let hdr = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("hdr-color"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: HDR_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-    });
-    let hdr_view = hdr.create_view(&wgpu::TextureViewDescriptor::default());
-
     let bw = (width / 2).max(1);
     let bh = (height / 2).max(1);
     let bloom_a = device.create_texture(&wgpu::TextureDescriptor {
@@ -483,7 +467,7 @@ fn create_targets(
     });
     let bloom_b_view = bloom_b.create_view(&wgpu::TextureViewDescriptor::default());
 
-    (hdr, hdr_view, bloom_a, bloom_a_view, bloom_b, bloom_b_view)
+    (bloom_a, bloom_a_view, bloom_b, bloom_b_view)
 }
 
 fn make_tex_bg(

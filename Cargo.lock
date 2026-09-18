@@ -1976,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "image",
@@ -1998,7 +1998,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-anim"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit-math",
  "kerabit-world",
@@ -2006,7 +2006,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-assets"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "gltf",
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-audio"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit-math",
  "rodio",
@@ -2029,11 +2029,11 @@ dependencies = [
 
 [[package]]
 name = "kerabit-color"
-version = "2.0.0"
+version = "3.0.0"
 
 [[package]]
 name = "kerabit-editor"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "eframe",
  "egui",
@@ -2050,11 +2050,11 @@ dependencies = [
 
 [[package]]
 name = "kerabit-input"
-version = "2.0.0"
+version = "3.0.0"
 
 [[package]]
 name = "kerabit-juni"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "juni-check",
  "juni-driver",
@@ -2067,21 +2067,21 @@ dependencies = [
 
 [[package]]
 name = "kerabit-math"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "glam",
 ]
 
 [[package]]
 name = "kerabit-physics"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit-math",
 ]
 
 [[package]]
 name = "kerabit-render"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2094,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "kerabit-world"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit-math",
 ]
@@ -3088,7 +3088,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "reach"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit",
 ]
@@ -3395,7 +3395,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "showcase"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit",
 ]
@@ -3530,7 +3530,7 @@ dependencies = [
 
 [[package]]
 name = "spark"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit",
 ]
@@ -3564,7 +3564,7 @@ checksum = "6637bab7722d379c8b41ba849228d680cc12d0a45ba1fa2b48f2a30577a06731"
 
 [[package]]
 name = "strike"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit",
 ]
@@ -3593,7 +3593,7 @@ dependencies = [
 
 [[package]]
 name = "surge"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "kerabit",
 ]

@@ -1,7 +1,9 @@
 //! Kerabit Summit showcase — non-game engine trailer.
 //!
-//! Visual proof of M1 render: PBR-lite materials, multi-light, tonemap/bloom,
-//! and particle bursts. Orbit period is **20s** so marketing loops close cleanly.
+//! Visual proof of the 3.0 render tier: PBR materials under sky IBL, a ring of
+//! clustered point lights, cascaded soft shadows, SSAO, screen-space
+//! reflections on the metallic props, TAA, tonemap/bloom, and particle bursts.
+//! Orbit period is **20s** so marketing loops close cleanly.
 //!
 //! ```bash
 //! cargo run -p showcase
@@ -223,7 +225,7 @@ fn main() {
                 }
 
                 let pulse = 1.0 + (phase * TAU).sin() * 0.25;
-                ctx.set_lights([
+                let mut lights = vec![
                     Light::sun(vec3(-0.45, -1.0, -0.25))
                         .intensity(1.4)
                         .color(Color::rgb(1.0, 0.96, 0.9)),
@@ -239,7 +241,26 @@ fn main() {
                         .intensity(1.2 * pulse)
                         .color(Color::rgb(0.55, 1.0, 0.7))
                         .range(6.0),
-                ]);
+                ];
+                // Clustered-light ring: 48 small colored points drifting around the set.
+                for i in 0..48 {
+                    let f = i as f32;
+                    let a = f / 48.0 * TAU + phase * TAU * 0.5;
+                    let r = 3.6 + (f * 0.9).sin() * 0.6;
+                    let y = 0.35 + ((f * 0.7 + phase * TAU).sin() * 0.5 + 0.5) * 1.4;
+                    let color = Color::rgb(
+                        0.5 + 0.5 * (f * 0.9).sin(),
+                        0.5 + 0.5 * (f * 1.3 + 2.0).sin(),
+                        0.5 + 0.5 * (f * 0.6 + 4.0).sin(),
+                    );
+                    lights.push(
+                        Light::point(vec3(a.cos() * r, y, a.sin() * r))
+                            .intensity(0.9)
+                            .color(color)
+                            .range(2.6),
+                    );
+                }
+                ctx.set_lights(lights);
 
                 if !record {
                     ctx.ui()
@@ -251,7 +272,7 @@ fn main() {
                         0.09,
                         0.024,
                         Color::rgb(0.7, 0.72, 0.8),
-                        "Summit showcase  ·  PBR-lite · multi-light · bloom · particles",
+                        "3.0 render tier  ·  clustered lights · CSM · SSAO · IBL · SSR · TAA",
                     );
                     ctx.ui().text(
                         0.04,

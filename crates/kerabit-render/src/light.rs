@@ -1,15 +1,19 @@
-//! Scene lights for the lit frame uniforms.
+//! Scene lights for the clustered lit pass.
 //!
-//! **Limits (M1):** up to [`MAX_LIGHTS`] (4) total, any mix of directional and
-//! point. Soft shadows come from the **first directional** light only. Extra
-//! lights are unshadowed. Scene JSON still authors a single sun; multi-light
+//! **Limits (3.0):** up to [`MAX_LIGHTS`] (256) per frame in a storage buffer;
+//! at most [`MAX_DIRECTIONAL_LIGHTS`] (4) of them directional. Point lights are
+//! binned into a froxel grid on the GPU so each fragment only shades the lights
+//! that overlap its cluster. Cascaded soft shadows come from the **first
+//! directional** light only. Scene JSON still authors a single sun; multi-light
 //! is a runtime / code API.
 
 use kerabit_color::Color;
 use kerabit_math::Vec3;
 
-/// Maximum lights packed into frame uniforms / shaded per fragment.
-pub const MAX_LIGHTS: usize = 4;
+/// Maximum lights uploaded per frame (directional + point).
+pub const MAX_LIGHTS: usize = 256;
+/// Directional lights shaded per fragment (the rest are dropped).
+pub const MAX_DIRECTIONAL_LIGHTS: usize = 4;
 
 /// Directional (sun) or local point light.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,9 +107,23 @@ impl Light {
     }
 }
 
-/// Pack up to [`MAX_LIGHTS`] lights (truncates extras).
+/// Keep at most [`MAX_LIGHTS`] lights, and at most [`MAX_DIRECTIONAL_LIGHTS`]
+/// directional ones, preserving order (truncates extras).
 pub fn clamp_lights(lights: &[Light]) -> Vec<Light> {
-    lights.iter().take(MAX_LIGHTS).cloned().collect()
+    let mut dirs = 0usize;
+    lights
+        .iter()
+        .filter(|l| {
+            if l.kind == LightKind::Directional {
+                dirs += 1;
+                dirs <= MAX_DIRECTIONAL_LIGHTS
+            } else {
+                true
+            }
+        })
+        .take(MAX_LIGHTS)
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]
@@ -131,7 +149,11 @@ mod tests {
 
     #[test]
     fn clamp_truncates() {
-        let lights: Vec<_> = (0..6).map(|i| Light::point(vec3(i as f32, 0.0, 0.0))).collect();
+        let lights: Vec<_> = (0..300)
+            .map(|i| Light::point(vec3(i as f32, 0.0, 0.0)))
+            .collect();
         assert_eq!(clamp_lights(&lights).len(), MAX_LIGHTS);
+        let suns: Vec<_> = (0..6).map(|_| Light::sun(vec3(0.0, -1.0, 0.0))).collect();
+        assert_eq!(clamp_lights(&suns).len(), MAX_DIRECTIONAL_LIGHTS);
     }
 }

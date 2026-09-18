@@ -85,8 +85,8 @@ pub use kerabit_world::{EntityId, Transform, World, LAYER_DEFAULT};
 pub use material::Material;
 pub use mesh::Mesh;
 pub use scene::{
-    map_script_path, Prefab, Scene, SceneCamera, SceneEntity, SceneError, SceneLight, SceneMap,
-    SceneMaterial, SceneMesh, SCENE_VERSION,
+    map_script_path, Prefab, Scene, SceneCamera, SceneEntity, SceneEnvironment, SceneError,
+    SceneLight, SceneLod, SceneMap, SceneMaterial, SceneMesh, SCENE_VERSION,
 };
 pub use ui::Ui;
 

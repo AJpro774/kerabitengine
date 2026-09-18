@@ -7,13 +7,15 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
+use kerabit_assets::HdrImage;
 use kerabit_audio::AudioEngine;
 use kerabit_color::Color;
 use kerabit_input::InputState;
-use kerabit_math::vec3;
+use kerabit_math::{vec3, Mat4};
 use kerabit_physics::PhysicsWorld;
 use kerabit_render::{
-    clamp_lights, Camera, DrawItem, GpuState, Light, MeshId, SurfaceError, TextureId,
+    clamp_lights, Camera, DrawItem, EquirectImage, GpuState, Light, LodLevel, MeshId,
+    SurfaceError, TextureId,
 };
 use kerabit_world::{EntityId, Transform, World};
 use winit::application::ApplicationHandler;
@@ -52,6 +54,8 @@ pub struct Kerabit {
     /// When set, dump RGBA PNG frames each tick (fixed 1/30 dt) for trailers.
     capture_dir: Option<std::path::PathBuf>,
     pub(crate) scripts: ScriptRuntime,
+    /// `.hdr` environment + intensity applied once the GPU exists.
+    pub(crate) environment: Option<(std::path::PathBuf, f32)>,
 }
 
 impl Kerabit {
@@ -67,7 +71,17 @@ impl Kerabit {
             window_size: (960, 640),
             capture_dir: None,
             scripts: ScriptRuntime::new(),
+            environment: None,
         }
+    }
+
+    /// Image-based lighting from an equirectangular `.hdr` (diffuse SH + prefiltered specular).
+    ///
+    /// `intensity` scales the radiance (`1.0` = as authored). Without this the
+    /// renderer lights from the procedural sky gradient.
+    pub fn environment(mut self, hdr: impl Into<std::path::PathBuf>, intensity: f32) -> Self {
+        self.environment = Some((hdr.into(), intensity));
+        self
     }
 
     /// Physical window size in pixels (default 960×640).
@@ -169,6 +183,32 @@ pub(crate) struct Renderable {
     albedo_texture: Option<TextureId>,
     /// GPU handle for [`Material::normal_texture`], if any.
     normal_texture: Option<TextureId>,
+    /// Coarser meshes + switch distances (nearest first).
+    lods: Vec<LodLevel>,
+}
+
+/// Decode an `.hdr` and install it as the IBL environment.
+pub(crate) fn load_environment(
+    gpu: &mut GpuState,
+    path: &Path,
+    intensity: f32,
+) -> Result<(), SceneError> {
+    let img = HdrImage::load(path)?;
+    gpu.set_environment(
+        Some(&EquirectImage {
+            width: img.width,
+            height: img.height,
+            rgb: &img.rgb,
+        }),
+        intensity,
+    );
+    Ok(())
+}
+
+/// World matrices from the previous frame, keyed by entity (motion vectors for TAA).
+#[derive(Default)]
+pub(crate) struct PrevTransforms {
+    map: HashMap<EntityId, Mat4>,
 }
 
 struct App<F> {
@@ -193,6 +233,8 @@ struct App<F> {
     capture_dir: Option<std::path::PathBuf>,
     capture_frame: u32,
     scripts: ScriptRuntime,
+    environment: Option<(std::path::PathBuf, f32)>,
+    prev_transforms: PrevTransforms,
 }
 
 impl<F> ApplicationHandler for App<F>
@@ -223,6 +265,11 @@ where
                             eprintln!("kerabit: failed to spawn scene: {err:#}");
                             event_loop.exit();
                             return;
+                        }
+                        if let Some((path, intensity)) = self.environment.take() {
+                            if let Err(err) = load_environment(&mut gpu, &path, intensity) {
+                                eprintln!("kerabit: environment `{}`: {err}", path.display());
+                            }
                         }
                         self.gpu = Some(gpu);
                         self.window = Some(window);
@@ -352,7 +399,7 @@ where
 
         self.world.update_world_matrices();
 
-        let draws = build_draw_list(&self.world, &self.renderables);
+        let draws = build_draw_list(&self.world, &self.renderables, &mut self.prev_transforms);
 
         let Some(gpu) = self.gpu.as_mut() else {
             return;
@@ -423,6 +470,14 @@ pub(crate) fn spawn_entities(
             SceneError::Spawn(format!("entity `{}` has no mesh", desc.name))
         })?;
         let mesh_id = gpu.upload_mesh(mesh.as_render());
+        let lods: Vec<LodLevel> = desc
+            .lods
+            .iter()
+            .map(|(lod_mesh, distance)| LodLevel {
+                mesh: gpu.upload_mesh(lod_mesh.as_render()),
+                distance: *distance,
+            })
+            .collect();
         let albedo_texture = desc
             .material
             .albedo_texture()
@@ -449,6 +504,7 @@ pub(crate) fn spawn_entities(
                 material: desc.material,
                 albedo_texture,
                 normal_texture,
+                lods,
             },
         );
         ids.push(id);
@@ -465,30 +521,41 @@ pub(crate) fn spawn_entities(
     Ok(ids)
 }
 
+/// Build this frame's draws, attaching last frame's world matrix for motion
+/// vectors and remembering this frame's for the next call.
 fn build_draw_list(
     world: &World,
     renderables: &HashMap<EntityId, Renderable>,
+    prev: &mut PrevTransforms,
 ) -> Vec<DrawItem> {
     let mut draws = Vec::with_capacity(renderables.len());
+    let mut current: HashMap<EntityId, Mat4> = HashMap::with_capacity(renderables.len());
     for entity in world.iter() {
         if !entity.is_enabled() {
             continue;
         }
-        let Some(r) = renderables.get(&entity.id()) else {
+        let id = entity.id();
+        let Some(r) = renderables.get(&id) else {
             continue;
         };
         let model = entity.transform.world_matrix_cached();
         let mut item = DrawItem::new(r.mesh, model, r.material.albedo())
             .with_roughness(r.material.roughness_factor())
-            .with_metallic(r.material.metallic_factor());
+            .with_metallic(r.material.metallic_factor())
+            .with_prev_model(prev.map.get(&id).copied().unwrap_or(model));
         if let Some(tex) = r.albedo_texture {
             item = item.with_texture(tex);
         }
         if let Some(tex) = r.normal_texture {
             item = item.with_normal_map(tex);
         }
+        if !r.lods.is_empty() {
+            item = item.with_lods(&r.lods);
+        }
+        current.insert(id, model);
         draws.push(item);
     }
+    prev.map = current;
     draws
 }
 
@@ -520,9 +587,14 @@ where
     let mut quit = false;
     let mut frame_idx = 0u32;
     let mut scripts = builder.scripts;
+    let mut prev_transforms = PrevTransforms::default();
 
     spawn_entities(&mut world, &mut renderables, &mut gpu, builder.pending)
         .map_err(|err| anyhow::anyhow!("{err}"))?;
+    if let Some((path, intensity)) = builder.environment {
+        load_environment(&mut gpu, &path, intensity)
+            .map_err(|err| anyhow::anyhow!("environment `{}`: {err}", path.display()))?;
+    }
 
     eprintln!(
         "kerabit: headless capture {}×{} → {} @ 30fps",
@@ -562,7 +634,7 @@ where
         }
 
         world.update_world_matrices();
-        let draws = build_draw_list(&world, &renderables);
+        let draws = build_draw_list(&world, &renderables, &mut prev_transforms);
         gpu.update_particles(dt);
         gpu.render_lights(&mut camera, &lights, ambient, &draws, ui.commands())
             .map_err(|e| anyhow::anyhow!("render failed: {e:?}"))?;
@@ -616,6 +688,8 @@ where
             capture_dir: builder.capture_dir.clone(),
             capture_frame: 0,
             scripts: builder.scripts,
+            environment: builder.environment,
+            prev_transforms: PrevTransforms::default(),
         };
 
         if let Some(dir) = app.capture_dir.as_ref() {

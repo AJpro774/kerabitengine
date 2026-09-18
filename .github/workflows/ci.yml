@@ -36,3 +36,7 @@ jobs:
         run: cargo test --workspace
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Juni scripts type-check against the host prelude
+        run: |
+          cargo run -q -p kerabit-juni --bin check_juni -- examples/scenes/hello.juni
+          cargo run -q -p kerabit-juni --bin check_juni -- games/spark/scenes/spark.juni

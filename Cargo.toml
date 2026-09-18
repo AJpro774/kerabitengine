@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/AJpro774/kerabitengine"
@@ -41,7 +41,7 @@ thiserror = "2.0"
 raw-window-handle = "0.6"
 
 # Assets (P5) — lightweight loaders only (no editor / engine bundling)
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "hdr"] }
 tobj = "4.0"
 gltf = { version = "1.4", default-features = false, features = ["utils", "import"] }
 

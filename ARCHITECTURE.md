@@ -49,8 +49,8 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 3. Tick loaded Juni scripts (`kerabit-juni`) against the same world / input / quit
 4. Clear input edges / mouse delta (`end_frame`)
 5. [`World::update_world_matrices`] — dirty local TRS, then parent→child world matrices
-6. Build draw list from **enabled** world entities + per-entity mesh / albedo / roughness (world matrix); despawned entities must leave the renderable map (`Context::despawn` / `clear_world`)
-7. Pack instances by `MeshId`, write instance buffer, then encode **shadow map** (directional depth) → **sky** + **lit** into HDR (PBR-lite, ≤4 lights, PCF soft shadows) → **particles** → **tonemap + bloom** to swapchain → **overlay** (UI), present
+6. Build draw list from **enabled** world entities + per-entity mesh / albedo / roughness / LOD chain (world matrix + last frame's matrix for motion vectors); despawned entities must leave the renderable map (`Context::despawn` / `clear_world`)
+7. [`SceneRenderer`](crates/kerabit-render/src/scene_renderer.rs) (shared by games, headless capture, and the editor viewport): frustum-cull + pick LODs → pack instances by `MeshId` → upload lights (directional first) → **cluster** compute (froxel light lists) → **4 cascaded shadow** passes → **depth prepass + G-buffer** (normal / roughness, velocity) → **Hi-Z** pyramid → **SSAO** (half-res + depth-aware blur) → **sky** where depth is still far → **lit** (clustered PBR, CSM PCF, SH irradiance; writes color + specular weight) → **specular resolve** (SSR with prefiltered-cube fallback) → **particles** → **TAA** resolve → **bloom + ACES tonemap** to swapchain → **overlay** (UI), present
 
 **EventLoop / reload:** One winit `EventLoop` per process (thread-local + `run_app_on_demand`). Mid-run [`Context::apply_scene`](API.md) clears world + renderables + physics and respawns a `Scene` without recreating the window — preferred for level transitions (Reach) and future editor Play. Re-entering `Kerabit::run` still works but rebuilds App/window.
 
@@ -68,20 +68,26 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 **Showcase (M6):** `cargo run -p showcase` — non-game Summit render trailer (PBR, lights, particles).
 **P7 legacy slice:** `cargo run -p kerabit --example mini_game` (loads `examples/scenes/mini_game.kerabit.json`).
 
-## GPU resource model (P1–P4, E5, M1)
+## GPU resource model (3.0 render tier)
 
-- **Frame uniforms**: view-proj, camera, ambient, light view-proj, shadow params + **up to 4 lights** (`FrameUniforms` / `lit.wgsl`)
-- **Instance buffer**: model + albedo + roughness + metallic (`InstanceRaw`); batches by mesh + albedo + normal tex (≤16384 instances/frame)
+- **Frame uniforms** (`shaders/frame.wgsl`, prepended to every scene shader): jittered view-proj / view / proj + inverses, previous view-proj, camera, ambient + environment intensity, near/far + light counts, screen size, cluster grid params, jitter, 4 cascade matrices + splits, shadow params, 9 SH coefficients, feature flags (`FrameUniforms`)
+- **Lights**: storage buffer of up to **256** `GpuLight`s (≤4 directional first, then point). `cluster.wgsl` bins point lights into a **16×9×24** froxel grid (≤64 per cluster); `lit.wgsl` walks its cluster's list per fragment
+- **Instance buffer**: model + previous model + albedo + roughness + metallic (`InstanceRaw`, 160 B); batches by mesh + albedo + normal tex (≤16384 instances/frame). `prepare_draws` frustum-culls and resolves each `DrawItem`'s LOD chain by camera distance
 - **Mesh GPU cache**: CPU `Mesh` → content-hash dedupe → `MeshId` → vertex/index buffers
 - **Material**: albedo / roughness / metallic in instance attrs; albedo + normal bind group (white / flat-normal defaults)
-- **Depth texture** resized on rescale
-- **Shadow map (E5)**: 2048² directional cascade; first directional light only; 3×3 PCF in lit
-- **Sky (E5)**: fullscreen gradient from `clear_color` (horizon) to auto zenith
-- **Lit shading (M1)**: PBR-lite GGX + metallic workflow; optional normal maps via derivative TBN
-- **Post (M1)**: HDR (`Rgba16Float`) → bright extract → half-res blur → ACES tonemap + bloom composite
-- **Particles (M1)**: CPU billboards, camera-facing quads, alpha blend into HDR before post
+- **G-buffer** (`gbuffer.rs`): depth prepass writes `Depth32Float` + world normal / roughness (`Rgba16Float`) + screen-space velocity (`Rg16Float`); the lit pass then depth-tests only (no overdraw shading). A **Hi-Z** min-depth pyramid (5 mips) feeds SSR
+- **Cascaded shadows** (`shadow.rs`): 4 × 2048² `Depth32Float` array, practical split scheme to 120 units, texel-snapped stable fit; 3×3 PCF with cascade blending; first directional light only
+- **SSAO** (`ssao.rs`): half-res 16-sample hemisphere kernel over depth + normals, interleaved-gradient rotation, depth-aware 4×4 blur; multiplies ambient and SH irradiance
+- **Environment / IBL** (`environment.rs`): equirect `.hdr` or the procedural sky → 128² cube → GGX-prefiltered specular mips (6) + split-sum BRDF LUT; **SH9 irradiance** projected on the CPU. Default: sky gradient at `DEFAULT_SKY_ENV_INTENSITY`; scene `environment` or `Kerabit::environment` swaps in an `.hdr`
+- **Sky**: fullscreen gradient from `clear_color` (horizon) to auto zenith, drawn only where the prepass left depth = 1
+- **Lit shading**: GGX + metallic workflow; optional normal maps via derivative TBN; writes HDR color (target 0) and the specular *weight* Fresnel × BRDF × AO (target 1)
+- **Specular resolve / SSR** (`ssr.rs`): Hi-Z assisted view-space ray march (coarse level 2, binary refine at level 0), thickness test, edge + roughness fade; misses fall back to the prefiltered environment cube
+- **TAA** (`taa.rs`): Halton(2,3) 8-sample projection jitter, motion vectors from the prepass (camera reprojection for background), 3×3 neighborhood clamp, 0.9 history blend into a stable output texture copied to history
+- **Post**: resolved HDR (`Rgba16Float`) → bright extract → half-res blur → ACES tonemap + bloom composite
+- **Particles**: CPU billboards, camera-facing quads, alpha blend into the resolved HDR before TAA
 - **UI overlay**: after post on swapchain; 8×8 ASCII atlas
-- **Authoring lights**: Scene JSON = single sun; runtime `lights` API ≤4 (dir + point)
+- **Authoring lights**: Scene JSON = single sun (+ optional `environment`); runtime `lights` API ≤256 (≤4 directional)
+- **Debug**: `KERABIT_RENDER_DEBUG=lit|resolved,no-ssao,no-ibl,no-ssr,no-taa` selects the stage the post stack shows / disables features; `RenderSettings` exposes the same toggles in code
 
 ### Vertex layout (**frozen**)
 
@@ -108,12 +114,14 @@ CPU type: `kerabit_render::Vertex` / `InstanceRaw` (`bytemuck::Pod`). Changing t
 | `Mesh` / `MeshBuilder` | CPU geometry builders |
 | `MeshId` / `MeshCache` | GPU upload + content-hash lookup |
 | `Camera` | `perspective(fov)` + `look_at` + `set_aspect` |
-| `Light` / `LightKind` / `MAX_LIGHTS` | sun / point; ≤4 packed into frame uniforms |
-| `ShadowMap` | directional depth map + comparison sampler (E5) |
-| `PostStack` | HDR + bloom + tonemap (M1) |
+| `Light` / `LightKind` / `MAX_LIGHTS` / `MAX_DIRECTIONAL_LIGHTS` | sun / point; ≤256 in a storage buffer, ≤4 directional |
+| `SceneRenderer` / `RenderSettings` | the whole 3.0 pass chain + SSAO / IBL / SSR / TAA toggles |
+| `ShadowMap` / `CascadeSet` / `fit_cascades` | 4-cascade depth array + comparison sampler |
+| `EquirectImage` | HDR pixels handed to the IBL builder |
+| `PostStack` | bloom + tonemap over an external HDR source |
 | `ParticleSystem` / `ParticleBurst` | billboard particles (M1) |
-| `DrawItem` | mesh + model + albedo + roughness + metallic + textures |
-| `InstanceRaw` | GPU instance stride |
+| `DrawItem` / `LodLevel` | mesh + model (+ previous model) + albedo + roughness + metallic + textures + LOD chain |
+| `InstanceRaw` | GPU instance stride (160 B) |
 | `TextureId` / `TextureCache` | albedo (sRGB) + normal (linear) + material bind groups |
 
 Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
@@ -141,7 +149,7 @@ Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
 | E6 Ship Reach | **Done** | `scripts/package-reach.sh` → `dist/Reach.app` + zip; icon + Play docs |
 | E7 Second game | **Done** | `games/surge` score-attack vertical slice; 2 editor-openable arenas |
 | M0 Summit foundations | **Done** | `1.0.0-alpha.2`; [ROADMAP.md](ROADMAP.md); 3-OS CI; scene `components`/`extras` |
-| M1 Render leap | **Done** | PBR-lite, ≤4 lights, tonemap/bloom, particles, `pbr_room` example |
+| M1 Render leap | **Done** (superseded by 3.0 tier) | PBR-lite, ≤4 lights, tonemap/bloom, particles, `pbr_room` example |
 | M2 Simulation leap | **Done** | `kerabit-anim`; dynamics + character controller; enable/tags/layers; `physics_sandbox` |
 | M3 Audio leap | **Done** | Spatial `play_at`, mix buses, streaming music |
 | M4 Editor professional | **Done** | Undo/redo, multi-select, align, prefabs, snap persistence, polished Play |
@@ -151,6 +159,7 @@ Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
 | 1.1 Rhai | **Done** (superseded) | `kerabit-script`; scene `extras.script`; editor code panel |
 | 2.0 Scripting Summit | **Done** (superseded) | Rich host API; Spark; hot-reload; Frozen for 2.0 table |
 | 3.0 Juni scripting | **Done** | `kerabit-juni`: Juni → WASM in-process, wasmtime host, prelude, `check_juni`; Rhai removed |
+| 3.0 Render tier | **Done** | `SceneRenderer`: G-buffer prepass, clustered lights (256), 4-cascade CSM, SSAO, HDR IBL, SSR, TAA, LODs; 10k cubes + 200 lights at 60 fps |
 
 ## Deps
 

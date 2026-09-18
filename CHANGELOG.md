@@ -5,12 +5,36 @@ All notable changes to Kerabit are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [3.0.0] — 2026-09-18
+
+**Juni + UE5-class render tier.** Scripting moves from Rhai to compiled [Juni](https://github.com/AJpro774/Juno) (**breaking**: `.rhai` files no longer load), and the renderer gains the pillars of a modern real-time pipeline on the same tiny footprint. Frozen 1.0 Rust APIs are unchanged; new surfaces are additive.
 
 ### Added
 
-- **Kerabit MCP** (`tools/kerabit-mcp`) — Node/TS stdio MCP for docs, scene/script IO + validate, `check_rhai`, scaffold, and `cargo run` / stop. Helper bin: `cargo run -p kerabit-script --bin check_rhai`.
+- **Juni scripting (`kerabit-juni`, Frozen for 3.0)** — `.juni` scripts (statically typed, Python-like indentation) compile in-process via Juno `v13.0.0` `extern` host imports against the prelude [`crates/kerabit-juni/juni/kerabit.juni`](crates/kerabit-juni/juni/kerabit.juni) and run in a fuel-limited wasmtime store. `fn main() -> i32` once at load, `fn frame(dt: f32) -> i32` per frame, `state:` for persistence, entities as `i32` handles (`entity("name")`, `self_entity()`, `tag_count` / `tag_at`). Type errors fail load with `file:line:col`; a runaway loop traps and pauses that script (sticky `ctx.script_error()` until the file hot-reloads). Juno browser builtins are rejected with a hint. `cargo run -p kerabit-juni --bin check_juni -- script.juni`.
+- **Depth prepass + G-buffer** — world normal / roughness and motion vectors; the lit pass depth-tests only (no overdraw shading).
+- **Clustered lighting** — `MAX_LIGHTS` 4 → **256** (≤4 directional) in a storage buffer; a compute pass bins point lights into a 16×9×24 froxel grid. 10k cubes + 200 point lights hold 60 fps on Apple Silicon (`cargo run -p kerabit --example many_cubes --release`).
+- **Cascaded shadow maps** — four 2048² cascades to 120 units, practical splits, texel-snapped stable fit, PCF + cascade blending.
+- **SSAO** — half-res hemisphere kernel + depth-aware blur on ambient / irradiance.
+- **Image-based lighting** — scene `"environment": { "hdr", "intensity" }`, `Kerabit::environment`, `Context::set_environment` / `clear_environment`: equirect Radiance `.hdr` → prefiltered specular cube + split-sum BRDF LUT + SH9 irradiance. Without an environment the procedural sky lights the scene.
+- **Screen-space reflections** — Hi-Z assisted march with prefiltered-environment fallback, composited through a per-pixel specular weight.
+- **TAA** — Halton jitter, prepass motion vectors (camera reprojection for background), neighborhood-clamped history.
+- **Mesh LODs** — `Entity::lod(mesh, distance)` and scene `"lods": [{ "mesh", "distance" }]`; chosen per frame by camera distance, shared by shadows and the prepass.
+- **`RenderSettings`** / `KERABIT_RENDER_DEBUG` — toggle SSAO / IBL / SSR / TAA and view intermediate stages (`lit`, `resolved`).
+- **`HdrImage`** loader in `kerabit-assets` (`image` `hdr` feature).
+- **Kerabit MCP** (`tools/kerabit-mcp`) — Node/TS stdio MCP for docs, scene/script IO + validate, `kerabit_check_juni`, Juni scaffold, and `cargo run` / stop.
 - **Strike** — `cargo run -p strike`; first-person arena with hitscan, chasing AI dummies, and Sketchfab CC-BY props (`games/strike`).
+
+### Changed
+
+- Workspace version → **`3.0.0`**; `SceneRenderer` now backs games, headless capture, and the editor viewport (one pass chain, bloom + ACES on top).
+- `hello_rhai` → `hello_juni`; `games/spark/scenes/spark.juni` replaces `spark.rhai` (same gameplay); editor Script panel edits `.juni` and **Check** type-checks against the host API.
+- Showcase draws a 48-light clustered ring and reads the new tier's features in its HUD.
+- `InstanceRaw` grew to 160 B (previous model matrix); `FrameUniforms` is a new layout — `kerabit-render` internals, not the game API.
+
+### Removed
+
+- `crates/kerabit-script` and the `rhai` dependency. Rhai host functions have Juni equivalents (see API.md § Juni); `set` / `get` / `has` become a `state:` block.
 
 ## [2.0.0] — 2026-08-28
 

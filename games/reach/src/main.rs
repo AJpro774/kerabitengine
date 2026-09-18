@@ -1345,6 +1345,7 @@ mod tests {
             name: name.into(),
             tags: tags.iter().map(|t| (*t).to_string()).collect(),
             mesh: SceneMesh::Cube,
+            lods: Vec::new(),
             material: SceneMaterial {
                 color: Color::WHITE,
                 roughness: 0.5,
@@ -1377,11 +1378,13 @@ mod tests {
                 intensity: 1.0,
                 color: Color::WHITE,
             },
+            environment: None,
             entities: vec![
                 SceneEntity {
                     name: "floor".into(),
                     tags: vec!["ground".into()],
                     mesh: SceneMesh::Plane { size: 14.0 },
+                    lods: Vec::new(),
                     material: SceneMaterial {
                         color: Color::GRAY,
                         roughness: 0.9,
@@ -1445,6 +1448,7 @@ mod tests {
                 intensity: 1.0,
                 color: Color::WHITE,
             },
+            environment: None,
             entities: vec![
                 entity("player", &[], Vec3::new(-1.0, 0.5, 0.0), Vec3::ONE),
                 entity(

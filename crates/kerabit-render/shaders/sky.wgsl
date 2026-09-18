@@ -22,7 +22,9 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
     );
     var out: VertexOutput;
     let p = pos[idx];
-    out.clip_position = vec4<f32>(p, 1.0, 1.0); // far plane so lit geometry wins depth
+    // Far plane: with LessEqual and no depth write, only pixels the depth
+    // prepass left untouched (depth == 1) receive sky.
+    out.clip_position = vec4<f32>(p, 1.0, 1.0);
     out.ndc_y = p.y;
     return out;
 }

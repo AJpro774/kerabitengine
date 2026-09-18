@@ -12,11 +12,11 @@ use kerabit_render::{clamp_lights, Camera, GpuState, Light, ParticleBurst};
 use kerabit_juni::{PrimitiveKind, ScriptEffects, ScriptRuntime};
 use kerabit_world::{EntityId, World};
 
-use crate::engine::{spawn_entities, Renderable};
+use crate::engine::{load_environment, spawn_entities, Renderable};
 use crate::entity::Entity;
 use crate::material::Material;
 use crate::mesh::Mesh;
-use crate::scene::{load_script_attachments, Prefab, Scene, SceneError};
+use crate::scene::{load_script_attachments, resolve_relative, Prefab, Scene, SceneError};
 use crate::ui::Ui;
 
 /// Frame context: timing, input, scene, camera, physics, audio, UI, and quit.
@@ -346,14 +346,34 @@ impl Context<'_> {
             .as_mut()
             .ok_or_else(|| SceneError::Spawn("GPU not ready".into()))?;
         spawn_entities(self.world, self.renderables, gpu, entities)?;
-        // Resolve scripts like load_scene: prefer last scene dir, else keep prior base_dir.
+        // Resolve scripts / environment like load_scene: prefer last scene dir.
         let base = self.scripts.base_dir().map(PathBuf::from);
+        if let Some(env) = &scene.environment {
+            let hdr = resolve_relative(base.as_deref(), &env.hdr);
+            load_environment(gpu, &hdr, env.intensity)?;
+        }
         load_script_attachments(
             self.scripts,
             scene.script_attachments(),
             base.as_deref(),
         )?;
         Ok(())
+    }
+
+    /// Switch image-based lighting to an equirectangular `.hdr` mid-run.
+    pub fn set_environment(&mut self, hdr: impl AsRef<Path>, intensity: f32) -> Result<(), SceneError> {
+        let gpu = self
+            .gpu
+            .as_mut()
+            .ok_or_else(|| SceneError::Spawn("GPU not ready".into()))?;
+        load_environment(gpu, hdr.as_ref(), intensity)
+    }
+
+    /// Drop any `.hdr` environment and light from the procedural sky again.
+    pub fn clear_environment(&mut self, intensity: f32) {
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.set_environment(None, intensity);
+        }
     }
 
     /// Load `.kerabit.json` from `path` and [`Self::apply_scene`].
@@ -382,6 +402,10 @@ impl Context<'_> {
             .as_mut()
             .ok_or_else(|| SceneError::Spawn("GPU not ready".into()))?;
         spawn_entities(self.world, self.renderables, gpu, entities)?;
+        if let Some(env) = &scene.environment {
+            let hdr = resolve_relative(path.parent(), &env.hdr);
+            load_environment(gpu, &hdr, env.intensity)?;
+        }
         load_script_attachments(self.scripts, attachments, path.parent())?;
         Ok(())
     }

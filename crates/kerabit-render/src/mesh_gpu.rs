@@ -18,6 +18,11 @@ impl MeshId {
     pub fn as_u32(self) -> u32 {
         self.0
     }
+
+    /// Build from a raw id (tests / tooling only; ids come from [`MeshCache::upload`]).
+    pub fn from_raw(id: u32) -> Self {
+        Self(id)
+    }
 }
 
 /// GPU buffers for one uploaded mesh.

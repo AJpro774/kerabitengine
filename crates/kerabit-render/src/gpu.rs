@@ -1,4 +1,5 @@
-//! GPU state: surface, lit instanced pipeline, HDR post, particles, mesh cache.
+//! GPU state: surface + device, the shared [`SceneRenderer`] pass chain,
+//! particles, bloom/tonemap post, UI overlay, and optional RGBA frame capture.
 
 use std::sync::Arc;
 
@@ -6,31 +7,25 @@ use anyhow::{anyhow, Context as _, Result};
 use kerabit_color::Color;
 use winit::window::Window;
 
-const SHADER_BLIT: &str = include_str!("../shaders/blit.wgsl");
-/// Capture color format (RGBA for easy PNG encode).
-const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-
 use crate::camera::Camera;
-use crate::light::{Light, MAX_LIGHTS};
+use crate::environment::EquirectImage;
+use crate::light::Light;
 use crate::mesh::Mesh;
-use crate::mesh_gpu::{MeshCache, MeshId};
+use crate::mesh_gpu::MeshId;
 use crate::overlay::{
     bake_atlas_rgba, quad_to_vertices, OverlayCommands, OverlayVertex, ATLAS_HEIGHT, ATLAS_WIDTH,
     MAX_OVERLAY_VERTICES,
 };
 use crate::particles::{ParticleBurst, ParticleSystem};
 use crate::post::{PostStack, HDR_FORMAT};
-use crate::shadow::{directional_light_matrix, ShadowMap, SHADOW_HALF_EXTENT};
-use crate::sky::SkyPass;
-use crate::texture::{TextureCache, TextureId};
-use crate::uniforms::{
-    frustum_cull_draws, pack_draw_batches, DrawItem, FrameUniforms, InstanceRaw, MAX_INSTANCES,
-};
-use crate::vertex::Vertex;
+use crate::scene_renderer::SceneRenderer;
+use crate::texture::TextureId;
+use crate::uniforms::{DrawItem, RenderSettings};
 
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-const SHADER_LIT: &str = include_str!("../shaders/lit.wgsl");
+const SHADER_BLIT: &str = include_str!("../shaders/blit.wgsl");
 const SHADER_OVERLAY: &str = include_str!("../shaders/overlay.wgsl");
+/// Capture color format (RGBA for easy PNG encode).
+const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 /// Present / acquire failure (maps from wgpu without exposing it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,42 +58,33 @@ struct FrameCapture {
     post: PostStack,
     blit_pipeline: wgpu::RenderPipeline,
     blit_bind_group: wgpu::BindGroup,
-    #[allow(dead_code)]
-    blit_bgl: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
-    blit_sampler: wgpu::Sampler,
     width: u32,
     height: u32,
     bytes_per_row: u32,
     last_rgba: Option<Vec<u8>>,
 }
 
-/// Owns wgpu resources and a mesh cache for multi-mesh lit draws.
+/// Screen-space UI pass resources (after post, on the swapchain).
+struct Overlay {
+    pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    _atlas_texture: wgpu::Texture,
+    _atlas_sampler: wgpu::Sampler,
+    scratch: Vec<OverlayVertex>,
+}
+
+/// Owns wgpu resources and the scene pass chain for multi-mesh lit draws.
 pub struct GpuState {
     pub clear_color: Color,
     surface: Option<wgpu::Surface<'static>>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
-    depth_view: wgpu::TextureView,
-    pipeline: wgpu::RenderPipeline,
-    frame_buffer: wgpu::Buffer,
-    instance_buffer: wgpu::Buffer,
-    frame_bind_group: wgpu::BindGroup,
-    mesh_cache: MeshCache,
-    texture_cache: TextureCache,
-    shadow: ShadowMap,
-    sky: SkyPass,
+    renderer: SceneRenderer,
     post: PostStack,
     particles: ParticleSystem,
-    /// Screen-space UI pass (after post, on swapchain).
-    overlay_pipeline: wgpu::RenderPipeline,
-    overlay_vertex_buffer: wgpu::Buffer,
-    overlay_bind_group: wgpu::BindGroup,
-    _atlas_texture: wgpu::Texture,
-    _atlas_sampler: wgpu::Sampler,
-    overlay_scratch: Vec<OverlayVertex>,
+    overlay: Overlay,
     /// When set, each frame is tonemapped to RGBA and staged for [`Self::take_captured_rgba`].
     capture: Option<FrameCapture>,
 }
@@ -113,28 +99,16 @@ impl GpuState {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
-
         let surface = instance
             .create_surface(window.clone())
             .context("failed to create wgpu surface")?;
-
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
         }))
         .ok_or_else(|| anyhow!("no suitable GPU adapter (Metal/Vulkan/DX12 required)"))?;
-
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("kerabit-device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None,
-        ))
-        .context("failed to request wgpu device")?;
+        let (device, queue) = request_device(&adapter, "kerabit-device")?;
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -143,7 +117,6 @@ impl GpuState {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
-
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -156,268 +129,63 @@ impl GpuState {
         };
         surface.configure(&device, &config);
 
-        let depth_view = create_depth_view(&device, width, height);
-        let shadow = ShadowMap::new(&device);
-        let sky = SkyPass::new(&device, HDR_FORMAT);
-        let post = PostStack::new(&device, surface_format, width, height);
-        let particles = ParticleSystem::new(&device, HDR_FORMAT);
+        Ok(Self::build(device, queue, config, Some(surface), clear_color))
+    }
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("lit"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_LIT.into()),
-        });
-
-        let frame_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("frame-bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let texture_cache = TextureCache::new(&device, &queue);
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("lit-pipeline-layout"),
-            bind_group_layouts: &[
-                &frame_bgl,
-                texture_cache.bind_group_layout(),
-                &shadow.bind_group_layout,
-            ],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("lit-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::layout(), InstanceRaw::layout()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: HDR_FORMAT,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        let frame_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("frame-uniforms"),
-            size: std::mem::size_of::<FrameUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("instance-buffer"),
-            size: (std::mem::size_of::<InstanceRaw>() * MAX_INSTANCES) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let frame_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("frame-bg"),
-            layout: &frame_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: frame_buffer.as_entire_binding(),
-            }],
-        });
-
-        // --- Overlay (screen-space UI on swapchain after post) ---
-        let overlay_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("overlay"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_OVERLAY.into()),
-        });
-
-        let overlay_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("overlay-bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let overlay_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("overlay-pipeline-layout"),
-                bind_group_layouts: &[&overlay_bgl],
-                push_constant_ranges: &[],
-            });
-
-        let overlay_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("overlay-pipeline"),
-            layout: Some(&overlay_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &overlay_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[OverlayVertex::layout()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &overlay_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        let atlas_rgba = bake_atlas_rgba();
-        let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("ui-font-atlas"),
-            size: wgpu::Extent3d {
-                width: ATLAS_WIDTH,
-                height: ATLAS_HEIGHT,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &atlas_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &atlas_rgba,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(ATLAS_WIDTH * 4),
-                rows_per_image: Some(ATLAS_HEIGHT),
-            },
-            wgpu::Extent3d {
-                width: ATLAS_WIDTH,
-                height: ATLAS_HEIGHT,
-                depth_or_array_layers: 1,
-            },
-        );
-        let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("ui-font-sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+    /// Headless GPU (no window). Always captures RGBA frames — call
+    /// [`Self::render_lights`] then [`Self::take_captured_rgba`].
+    pub fn new_headless(width: u32, height: u32, clear_color: Color) -> Result<Self> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
-        let overlay_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("overlay-bg"),
-            layout: &overlay_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
-                },
-            ],
-        });
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .ok_or_else(|| anyhow!("no suitable GPU adapter (Metal/Vulkan/DX12 required)"))?;
+        let (device, queue) = request_device(&adapter, "kerabit-device-headless")?;
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            width: width.max(1),
+            height: height.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        let mut gpu = Self::build(device, queue, config, None, clear_color);
+        gpu.enable_frame_capture();
+        Ok(gpu)
+    }
 
-        let overlay_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("overlay-vertices"),
-            size: (std::mem::size_of::<OverlayVertex>() * MAX_OVERLAY_VERTICES) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        Ok(Self {
+    fn build(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        config: wgpu::SurfaceConfiguration,
+        surface: Option<wgpu::Surface<'static>>,
+        clear_color: Color,
+    ) -> Self {
+        let (width, height) = (config.width, config.height);
+        let renderer = SceneRenderer::new(&device, &queue, width, height);
+        let mut post = PostStack::new(&device, config.format, width, height);
+        post.set_source(&device, renderer.output_view());
+        let particles = ParticleSystem::new(&device, HDR_FORMAT);
+        let overlay = Overlay::new(&device, &queue, config.format);
+        Self {
             clear_color,
-            surface: Some(surface),
+            surface,
             device,
             queue,
             config,
-            size: winit::dpi::PhysicalSize::new(width, height),
-            depth_view,
-            pipeline,
-            frame_buffer,
-            instance_buffer,
-            frame_bind_group,
-            mesh_cache: MeshCache::new(),
-            texture_cache,
-            shadow,
-            sky,
+            renderer,
             post,
             particles,
-            overlay_pipeline,
-            overlay_vertex_buffer,
-            overlay_bind_group,
-            _atlas_texture: atlas_texture,
-            _atlas_sampler: atlas_sampler,
-            overlay_scratch: Vec::with_capacity(256),
+            overlay,
             capture: None,
-        })
+        }
     }
 
     /// Enable RGBA frame capture (for trailers / offline encode). Idempotent.
@@ -425,321 +193,9 @@ impl GpuState {
         if self.capture.is_some() {
             return;
         }
-        let width = self.config.width.max(1);
-        let height = self.config.height.max(1);
-        self.capture = Some(FrameCapture::new(
-            &self.device,
-            self.config.format,
-            width,
-            height,
-        ));
-    }
-
-    /// Headless GPU (no window). Always captures RGBA frames — call
-    /// [`Self::render_lights`] then [`Self::take_captured_rgba`].
-    pub fn new_headless(width: u32, height: u32, clear_color: Color) -> Result<Self> {
-        let width = width.max(1);
-        let height = height.max(1);
-
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY,
-            ..Default::default()
-        });
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .ok_or_else(|| anyhow!("no suitable GPU adapter (Metal/Vulkan/DX12 required)"))?;
-
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("kerabit-device-headless"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None,
-        ))
-        .context("failed to request wgpu device")?;
-
-        // Prefer a common swapchain-like format for blit target compatibility.
-        let surface_format = wgpu::TextureFormat::Bgra8UnormSrgb;
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width,
-            height,
-            present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-
-        let depth_view = create_depth_view(&device, width, height);
-        let shadow = ShadowMap::new(&device);
-        let sky = SkyPass::new(&device, HDR_FORMAT);
-        let post = PostStack::new(&device, surface_format, width, height);
-        let particles = ParticleSystem::new(&device, HDR_FORMAT);
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("lit"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_LIT.into()),
-        });
-
-        let frame_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("frame-bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let texture_cache = TextureCache::new(&device, &queue);
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("lit-pipeline-layout"),
-            bind_group_layouts: &[
-                &frame_bgl,
-                texture_cache.bind_group_layout(),
-                &shadow.bind_group_layout,
-            ],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("lit-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::layout(), InstanceRaw::layout()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: HDR_FORMAT,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        let frame_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("frame-uniforms"),
-            size: std::mem::size_of::<FrameUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("instance-buffer"),
-            size: (std::mem::size_of::<InstanceRaw>() * MAX_INSTANCES) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let frame_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("frame-bg"),
-            layout: &frame_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: frame_buffer.as_entire_binding(),
-            }],
-        });
-
-        let overlay_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("overlay"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_OVERLAY.into()),
-        });
-
-        let overlay_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("overlay-bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let overlay_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("overlay-pipeline-layout"),
-                bind_group_layouts: &[&overlay_bgl],
-                push_constant_ranges: &[],
-            });
-
-        let overlay_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("overlay-pipeline"),
-            layout: Some(&overlay_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &overlay_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[OverlayVertex::layout()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &overlay_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        let atlas_rgba = bake_atlas_rgba();
-        let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("ui-font-atlas"),
-            size: wgpu::Extent3d {
-                width: ATLAS_WIDTH,
-                height: ATLAS_HEIGHT,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &atlas_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &atlas_rgba,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(ATLAS_WIDTH * 4),
-                rows_per_image: Some(ATLAS_HEIGHT),
-            },
-            wgpu::Extent3d {
-                width: ATLAS_WIDTH,
-                height: ATLAS_HEIGHT,
-                depth_or_array_layers: 1,
-            },
-        );
-        let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("ui-font-sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-        let overlay_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("overlay-bg"),
-            layout: &overlay_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
-                },
-            ],
-        });
-
-        let overlay_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("overlay-vertices"),
-            size: (std::mem::size_of::<OverlayVertex>() * MAX_OVERLAY_VERTICES) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut gpu = Self {
-            clear_color,
-            surface: None,
-            device,
-            queue,
-            config,
-            size: winit::dpi::PhysicalSize::new(width, height),
-            depth_view,
-            pipeline,
-            frame_buffer,
-            instance_buffer,
-            frame_bind_group,
-            mesh_cache: MeshCache::new(),
-            texture_cache,
-            shadow,
-            sky,
-            post,
-            particles,
-            overlay_pipeline,
-            overlay_vertex_buffer,
-            overlay_bind_group,
-            _atlas_texture: atlas_texture,
-            _atlas_sampler: atlas_sampler,
-            overlay_scratch: Vec::with_capacity(256),
-            capture: None,
-        };
-        gpu.enable_frame_capture();
-        Ok(gpu)
+        let mut cap = FrameCapture::new(&self.device, self.config.format, self.config.width, self.config.height);
+        cap.post.set_source(&self.device, self.renderer.output_view());
+        self.capture = Some(cap);
     }
 
     /// Pop the last captured RGBA8 frame, if any (`width`, `height`, tightly packed rows).
@@ -751,32 +207,40 @@ impl GpuState {
 
     /// Upload a CPU mesh; returns a [`MeshId`] for draw lists.
     pub fn upload_mesh(&mut self, mesh: &Mesh) -> MeshId {
-        self.mesh_cache.upload(&self.device, mesh)
+        self.renderer.mesh_cache.upload(&self.device, mesh)
     }
 
     /// Upload an RGBA8 sRGB albedo texture.
     pub fn upload_texture_rgba8(&mut self, width: u32, height: u32, rgba: &[u8]) -> TextureId {
-        self.texture_cache
+        self.renderer
+            .texture_cache
             .upload_rgba8(&self.device, &self.queue, width, height, rgba)
     }
 
     /// Upload an RGBA8 linear texture (normal maps).
-    pub fn upload_texture_rgba8_linear(
-        &mut self,
-        width: u32,
-        height: u32,
-        rgba: &[u8],
-    ) -> TextureId {
-        self.texture_cache
+    pub fn upload_texture_rgba8_linear(&mut self, width: u32, height: u32, rgba: &[u8]) -> TextureId {
+        self.renderer
+            .texture_cache
             .upload_rgba8_linear(&self.device, &self.queue, width, height, rgba)
     }
 
     pub fn white_texture(&self) -> TextureId {
-        self.texture_cache.white()
+        self.renderer.texture_cache.white()
     }
 
     pub fn flat_normal_texture(&self) -> TextureId {
-        self.texture_cache.flat_normal()
+        self.renderer.texture_cache.flat_normal()
+    }
+
+    /// Image-based lighting from an equirectangular HDR; `None` restores the procedural sky.
+    pub fn set_environment(&mut self, image: Option<&EquirectImage<'_>>, intensity: f32) {
+        self.renderer.set_environment(&self.device, &self.queue, image, intensity);
+        self.rebind_post();
+    }
+
+    /// Toggle SSAO / IBL / SSR / TAA.
+    pub fn settings_mut(&mut self) -> &mut RenderSettings {
+        &mut self.renderer.settings
     }
 
     /// Emit a particle burst (billboards).
@@ -801,15 +265,13 @@ impl GpuState {
         if new_size.width == 0 || new_size.height == 0 {
             return;
         }
-        self.size = new_size;
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         if let Some(surface) = self.surface.as_ref() {
             surface.configure(&self.device, &self.config);
         }
-        self.depth_view = create_depth_view(&self.device, new_size.width, new_size.height);
-        self.post
-            .resize(&self.device, new_size.width, new_size.height);
+        self.renderer.resize(&self.device, new_size.width, new_size.height);
+        self.post.resize(&self.device, new_size.width, new_size.height);
         if self.capture.is_some() {
             self.capture = Some(FrameCapture::new(
                 &self.device,
@@ -817,6 +279,14 @@ impl GpuState {
                 new_size.width,
                 new_size.height,
             ));
+        }
+        self.rebind_post();
+    }
+
+    fn rebind_post(&mut self) {
+        self.post.set_source(&self.device, self.renderer.output_view());
+        if let Some(cap) = self.capture.as_mut() {
+            cap.post.set_source(&self.device, self.renderer.output_view());
         }
     }
 
@@ -832,11 +302,10 @@ impl GpuState {
         self.render_lights(camera, std::slice::from_ref(light), ambient, draws, overlay)
     }
 
-    /// Shadow → sky → lit (HDR) → particles → tonemap/bloom → overlay.
+    /// Scene pass chain → particles → TAA → tonemap/bloom → overlay.
     ///
-    /// At most [`MAX_LIGHTS`] lights are used; soft shadows follow the first
-    /// directional light. When frame capture is enabled, HDR is tonemapped into
-    /// an RGBA offscreen target (read back via [`Self::take_captured_rgba`]) and
+    /// When frame capture is enabled, the frame is tonemapped into an RGBA
+    /// offscreen target (read back via [`Self::take_captured_rgba`]) and
     /// blitted to the swapchain.
     pub fn render_lights(
         &mut self,
@@ -846,7 +315,6 @@ impl GpuState {
         draws: &[DrawItem],
         overlay: &OverlayCommands,
     ) -> Result<(), SurfaceError> {
-        // Acquire swapchain only when we have a window surface.
         let output = match self.surface.as_ref() {
             Some(surface) => Some(surface.get_current_texture().map_err(SurfaceError::from)?),
             None => None,
@@ -854,54 +322,12 @@ impl GpuState {
         let surface_view = output
             .as_ref()
             .map(|o| o.texture.create_view(&wgpu::TextureViewDescriptor::default()));
-
-        camera.set_aspect(self.aspect());
-        let lights = &lights[..lights.len().min(MAX_LIGHTS)];
-        let shadow_dir = Light::first_directional(lights)
-            .map(|l| l.direction)
-            .unwrap_or_else(|| kerabit_math::vec3(-0.35, -1.0, -0.25));
-        let light_vp = directional_light_matrix(shadow_dir, camera.target, SHADOW_HALF_EXTENT);
-        let frame = FrameUniforms::from_lights(camera, lights, ambient, light_vp);
-        self.queue
-            .write_buffer(&self.frame_buffer, 0, bytemuck::bytes_of(&frame));
-
-        let white = self.texture_cache.white();
-        let flat_n = self.texture_cache.flat_normal();
-        let visible = frustum_cull_draws(camera.view_proj(), draws, |id| {
-            self.mesh_cache.local_aabb(id)
-        });
-        let (flat, ranges) = pack_draw_batches(&visible, white, flat_n);
-        if !flat.is_empty() {
-            self.queue
-                .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&flat));
+        // Headless always captures; windowed captures when enabled.
+        if self.surface.is_none() && self.capture.is_none() {
+            return Err(SurfaceError::Other);
         }
 
-        let shadow_ranges: Vec<(MeshId, u32, u32)> = ranges
-            .iter()
-            .map(|&(mesh, _, _, start, count)| (mesh, start, count))
-            .collect();
-
-        for &(_, albedo, normal, _, _) in &ranges {
-            let _ = self
-                .texture_cache
-                .ensure_material_bind_group(&self.device, albedo, normal);
-        }
-
-        self.overlay_scratch.clear();
-        for q in overlay.quads() {
-            if self.overlay_scratch.len() + 6 > MAX_OVERLAY_VERTICES {
-                break;
-            }
-            quad_to_vertices(q, &mut self.overlay_scratch);
-        }
-        let overlay_vert_count = self.overlay_scratch.len() as u32;
-        if overlay_vert_count > 0 {
-            self.queue.write_buffer(
-                &self.overlay_vertex_buffer,
-                0,
-                bytemuck::cast_slice(&self.overlay_scratch),
-            );
-        }
+        let overlay_vert_count = self.overlay.upload(&self.queue, overlay);
 
         let mut encoder = self
             .device
@@ -909,98 +335,28 @@ impl GpuState {
                 label: Some("frame-encoder"),
             });
 
-        self.shadow.encode(
+        self.renderer.encode_scene(
+            &self.device,
             &self.queue,
             &mut encoder,
-            light_vp,
-            &self.mesh_cache,
-            &self.instance_buffer,
-            &shadow_ranges,
+            camera,
+            lights,
+            ambient,
+            self.clear_color,
+            draws,
         );
+        self.particles.encode(
+            &self.queue,
+            &mut encoder,
+            camera,
+            self.renderer.lit_view(),
+            self.renderer.depth_view(),
+        );
+        self.renderer.encode_finish(&mut encoder);
 
-        // Headless always captures; windowed captures when enabled.
-        if self.surface.is_none() && self.capture.is_none() {
-            return Err(SurfaceError::Other);
-        }
-
-        // When capturing, render HDR into the capture post stack so tonemap can
-        // land in RGBA for PNG readback; otherwise use the window post stack.
         let mut capture = self.capture.take();
-        {
-            let hdr_view = if let Some(cap) = capture.as_ref() {
-                &cap.post.hdr_view
-            } else {
-                &self.post.hdr_view
-            };
-
-            self.sky.encode(
-                &self.queue,
-                &mut encoder,
-                hdr_view,
-                &self.depth_view,
-                self.clear_color,
-            );
-
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("lit-pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: hdr_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &self.depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                });
-
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.frame_bind_group, &[]);
-                pass.set_bind_group(2, &self.shadow.bind_group, &[]);
-
-                for (mesh_id, albedo, normal, start, count) in ranges {
-                    let Some(gpu_mesh) = self.mesh_cache.get(mesh_id) else {
-                        continue;
-                    };
-                    let Some(tex_bg) = self.texture_cache.material_bind_group(albedo, normal) else {
-                        continue;
-                    };
-                    let byte_offset = start as u64 * std::mem::size_of::<InstanceRaw>() as u64;
-                    let byte_size = count as u64 * std::mem::size_of::<InstanceRaw>() as u64;
-                    pass.set_bind_group(1, tex_bg, &[]);
-                    pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-                    pass.set_vertex_buffer(
-                        1,
-                        self.instance_buffer.slice(byte_offset..byte_offset + byte_size),
-                    );
-                    pass.set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                    pass.draw_indexed(0..gpu_mesh.index_count, 0, 0..count);
-                }
-            }
-
-            self.particles.encode(
-                &self.queue,
-                &mut encoder,
-                camera,
-                hdr_view,
-                &self.depth_view,
-            );
-        }
-
         if let Some(cap) = capture.as_mut() {
-            cap.post
-                .encode(&self.queue, &mut encoder, &cap.view);
-            // Blit RGBA capture → swapchain when presenting to a window.
+            cap.post.encode(&self.queue, &mut encoder, &cap.view);
             if let Some(surface_view) = surface_view.as_ref() {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("capture-blit"),
@@ -1020,7 +376,6 @@ impl GpuState {
                 pass.set_bind_group(0, &cap.blit_bind_group, &[]);
                 pass.draw(0..3, 0..1);
             }
-            // Stage for CPU readback.
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
                     texture: &cap.texture,
@@ -1043,30 +398,12 @@ impl GpuState {
                 },
             );
         } else if let Some(surface_view) = surface_view.as_ref() {
-            self.post
-                .encode(&self.queue, &mut encoder, surface_view);
+            self.post.encode(&self.queue, &mut encoder, surface_view);
         }
 
         if overlay_vert_count > 0 {
             if let Some(surface_view) = surface_view.as_ref() {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("overlay-pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: surface_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                });
-                pass.set_pipeline(&self.overlay_pipeline);
-                pass.set_bind_group(0, &self.overlay_bind_group, &[]);
-                pass.set_vertex_buffer(0, self.overlay_vertex_buffer.slice(..));
-                pass.draw(0..overlay_vert_count, 0..1);
+                self.overlay.encode(&mut encoder, surface_view, overlay_vert_count);
             }
         }
 
@@ -1076,37 +413,207 @@ impl GpuState {
         }
 
         if let Some(cap) = capture.as_mut() {
-            let buffer_slice = cap.staging.slice(..);
-            let (tx, rx) = std::sync::mpsc::channel();
-            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
-            self.device.poll(wgpu::Maintain::Wait);
-            if rx.recv().ok().and_then(|r| r.ok()).is_some() {
-                let data = buffer_slice.get_mapped_range();
-                let mut rgba = Vec::with_capacity((cap.width * cap.height * 4) as usize);
-                let row_bytes = (cap.width * 4) as usize;
-                for y in 0..cap.height as usize {
-                    let start = y * cap.bytes_per_row as usize;
-                    rgba.extend_from_slice(&data[start..start + row_bytes]);
-                }
-                drop(data);
-                cap.staging.unmap();
-                cap.last_rgba = Some(rgba);
-            }
+            cap.read_back(&self.device);
         }
         self.capture = capture;
         Ok(())
     }
 }
 
+fn request_device(adapter: &wgpu::Adapter, label: &str) -> Result<(wgpu::Device, wgpu::Queue)> {
+    pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some(label),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .context("failed to request wgpu device")
+}
+
+impl Overlay {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue, surface_format: wgpu::TextureFormat) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("overlay"),
+            source: wgpu::ShaderSource::Wgsl(SHADER_OVERLAY.into()),
+        });
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("overlay-bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("overlay-pipeline-layout"),
+            bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("overlay-pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[OverlayVertex::layout()],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        let atlas_rgba = bake_atlas_rgba();
+        let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ui-font-atlas"),
+            size: wgpu::Extent3d {
+                width: ATLAS_WIDTH,
+                height: ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &atlas_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &atlas_rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(ATLAS_WIDTH * 4),
+                rows_per_image: Some(ATLAS_HEIGHT),
+            },
+            wgpu::Extent3d {
+                width: ATLAS_WIDTH,
+                height: ATLAS_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+        );
+        let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("ui-font-sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("overlay-bg"),
+            layout: &bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                },
+            ],
+        });
+        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("overlay-vertices"),
+            size: (std::mem::size_of::<OverlayVertex>() * MAX_OVERLAY_VERTICES) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        Self {
+            pipeline,
+            vertex_buffer,
+            bind_group,
+            _atlas_texture: atlas_texture,
+            _atlas_sampler: atlas_sampler,
+            scratch: Vec::with_capacity(256),
+        }
+    }
+
+    /// Expand quads into the vertex buffer; returns the vertex count.
+    fn upload(&mut self, queue: &wgpu::Queue, overlay: &OverlayCommands) -> u32 {
+        self.scratch.clear();
+        for q in overlay.quads() {
+            if self.scratch.len() + 6 > MAX_OVERLAY_VERTICES {
+                break;
+            }
+            quad_to_vertices(q, &mut self.scratch);
+        }
+        let count = self.scratch.len() as u32;
+        if count > 0 {
+            queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&self.scratch));
+        }
+        count
+    }
+
+    fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, vert_count: u32) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("overlay-pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        pass.draw(0..vert_count, 0..1);
+    }
+}
+
 impl FrameCapture {
-    fn new(
-        device: &wgpu::Device,
-        surface_format: wgpu::TextureFormat,
-        width: u32,
-        height: u32,
-    ) -> Self {
+    fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
         let width = width.max(1);
         let height = height.max(1);
         let bytes_per_row = align_bytes_per_row(width * 4);
@@ -1218,34 +725,36 @@ impl FrameCapture {
             post,
             blit_pipeline,
             blit_bind_group,
-            blit_bgl,
-            blit_sampler,
             width,
             height,
             bytes_per_row,
             last_rgba: None,
         }
     }
+
+    /// Block until the staged frame is mapped and unpack it into `last_rgba`.
+    fn read_back(&mut self, device: &wgpu::Device) {
+        let buffer_slice = self.staging.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        device.poll(wgpu::Maintain::Wait);
+        if rx.recv().ok().and_then(|r| r.ok()).is_some() {
+            let data = buffer_slice.get_mapped_range();
+            let mut rgba = Vec::with_capacity((self.width * self.height * 4) as usize);
+            let row_bytes = (self.width * 4) as usize;
+            for y in 0..self.height as usize {
+                let start = y * self.bytes_per_row as usize;
+                rgba.extend_from_slice(&data[start..start + row_bytes]);
+            }
+            drop(data);
+            self.staging.unmap();
+            self.last_rgba = Some(rgba);
+        }
+    }
 }
 
 fn align_bytes_per_row(bytes: u32) -> u32 {
     (bytes + 255) & !255
-}
-
-fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("depth"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: DEPTH_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    });
-    texture.create_view(&wgpu::TextureViewDescriptor::default())
 }

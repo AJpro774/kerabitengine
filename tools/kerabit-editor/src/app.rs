@@ -555,6 +555,7 @@ impl EditorApp {
             name,
             tags: Vec::new(),
             mesh: SceneMesh::Cube,
+            lods: Vec::new(),
             material: SceneMaterial {
                 color: Color::ORANGE,
                 roughness: 0.5,

@@ -21,6 +21,8 @@ pub struct Entity {
     pub(crate) tags: Vec<String>,
     pub(crate) layer: u32,
     pub(crate) enabled: bool,
+    /// Coarser meshes used beyond a camera distance (nearest first).
+    pub(crate) lods: Vec<(Mesh, f32)>,
 }
 
 impl Entity {
@@ -37,12 +39,21 @@ impl Entity {
             tags: Vec::new(),
             layer: kerabit_world::LAYER_DEFAULT,
             enabled: true,
+            lods: Vec::new(),
         }
     }
 
     /// Attach a mesh (required for drawing).
     pub fn mesh(mut self, mesh: Mesh) -> Self {
         self.mesh = Some(mesh);
+        self
+    }
+
+    /// Add a coarser mesh to draw once the entity is at least `distance` from the camera.
+    ///
+    /// Call up to twice (the renderer keeps two LOD levels beyond the base mesh).
+    pub fn lod(mut self, mesh: Mesh, distance: f32) -> Self {
+        self.lods.push((mesh, distance.max(0.0)));
         self
     }
 

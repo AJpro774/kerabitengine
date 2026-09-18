@@ -1,14 +1,39 @@
-//! Kerabit M8 stress — ~10k instanced cubes + hierarchy child.
+//! Kerabit stress — ~10k instanced cubes + hierarchy child + 200 clustered
+//! point lights (the 3.0 render-tier perf gate).
 //!
 //! ```bash
 //! cargo run -p kerabit --example many_cubes --release
 //! ```
 //!
-//! Escape quits. Right-drag orbits; WASD + Q/E move.
+//! Escape quits. Right-drag orbits; WASD + Q/E move. `L` toggles the light
+//! swarm. Average frame time prints every 2 seconds.
 
 use kerabit::prelude::*;
 
 const GRID: i32 = 22; // 22×22×22 = 10_648 cubes
+const POINT_LIGHTS: usize = 200;
+
+fn swarm_lights(t: f32) -> Vec<Light> {
+    let mut lights = vec![Light::sun(vec3(-0.4, -1.0, -0.2)).intensity(1.15)];
+    for i in 0..POINT_LIGHTS {
+        let f = i as f32;
+        let ring = 6.0 + (f * 0.37).sin() * 3.0 + (i % 5) as f32 * 2.2;
+        let angle = f * 0.7 + t * (0.15 + (i % 3) as f32 * 0.07);
+        let y = 2.0 + ((f * 0.53 + t * 0.6).sin() * 0.5 + 0.5) * 20.0;
+        let color = Color::rgb(
+            0.5 + 0.5 * (f * 0.9).sin(),
+            0.5 + 0.5 * (f * 1.3 + 2.0).sin(),
+            0.5 + 0.5 * (f * 0.6 + 4.0).sin(),
+        );
+        lights.push(
+            Light::point(vec3(angle.cos() * ring, y, angle.sin() * ring))
+                .color(color)
+                .intensity(6.0)
+                .range(5.5),
+        );
+    }
+    lights
+}
 
 fn main() {
     let mut builder = Kerabit::new("Kerabit — many cubes")
@@ -63,11 +88,36 @@ fn main() {
         }
     }
 
-    builder.run(|ctx| {
+    let mut elapsed = 0.0f32;
+    let mut swarm = true;
+    let mut frame_acc = (0.0f32, 0u32);
+    builder.run(move |ctx| {
         let dt = ctx.dt();
+        elapsed += dt;
 
         if ctx.input().key_pressed(Key::Escape) {
             ctx.quit();
+        }
+        if ctx.input().key_pressed(Key::L) {
+            swarm = !swarm;
+        }
+        if swarm {
+            ctx.set_lights(swarm_lights(elapsed));
+        } else {
+            ctx.set_lights([Light::sun(vec3(-0.4, -1.0, -0.2)).intensity(1.15)]);
+        }
+
+        frame_acc.0 += dt;
+        frame_acc.1 += 1;
+        if frame_acc.0 >= 2.0 {
+            let ms = frame_acc.0 / frame_acc.1 as f32 * 1000.0;
+            eprintln!(
+                "many_cubes: {:.2} ms/frame ({:.0} fps), lights={}",
+                ms,
+                1000.0 / ms,
+                if swarm { POINT_LIGHTS + 1 } else { 1 }
+            );
+            frame_acc = (0.0, 0);
         }
 
         if let Some(pivot) = ctx.world_mut().get_mut("pivot") {

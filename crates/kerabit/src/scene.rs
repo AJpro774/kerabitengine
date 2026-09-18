@@ -50,11 +50,28 @@ pub struct Scene {
     pub ambient: Color,
     pub camera: SceneCamera,
     pub light: SceneLight,
+    /// Optional image-based lighting (3.0). `None` uses the procedural sky.
+    pub environment: Option<SceneEnvironment>,
     pub entities: Vec<SceneEntity>,
     /// Reserved root-level component bag (future systems). Empty today.
     pub components: SceneMap,
     /// Reserved root-level extras bag (tooling / forward-compat). Empty today.
     pub extras: SceneMap,
+}
+
+/// Equirectangular `.hdr` environment for IBL (path relative to the scene file).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SceneEnvironment {
+    pub hdr: PathBuf,
+    /// Radiance multiplier (default `1.0`).
+    pub intensity: f32,
+}
+
+/// A coarser mesh used beyond `distance` world units from the camera.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SceneLod {
+    pub mesh: SceneMesh,
+    pub distance: f32,
 }
 
 /// Camera fields stored in a scene file.
@@ -83,6 +100,8 @@ pub struct SceneEntity {
     /// Optional in JSON (`[]` / omitted). Names remain labels; games should prefer tags.
     pub tags: Vec<String>,
     pub mesh: SceneMesh,
+    /// Optional LOD chain (3.0), nearest first; the renderer picks by camera distance.
+    pub lods: Vec<SceneLod>,
     pub material: SceneMaterial,
     pub at: Vec3,
     pub rotation: Quat,
@@ -158,6 +177,7 @@ impl Default for Scene {
                 intensity: 1.2,
                 color: Color::WHITE,
             },
+            environment: None,
             entities: Vec::new(),
             components: SceneMap::new(),
             extras: SceneMap::new(),
@@ -228,14 +248,26 @@ impl Scene {
     fn rebase_relative_assets(&mut self, dir: &Path) {
         for e in &mut self.entities {
             rebase_mesh(&mut e.mesh, Some(dir));
+            for lod in &mut e.lods {
+                rebase_mesh(&mut lod.mesh, Some(dir));
+            }
             rebase_material(&mut e.material, Some(dir));
+        }
+        if let Some(env) = &mut self.environment {
+            env.hdr = resolve_asset_path(Some(dir), &env.hdr);
         }
     }
 
     fn relativize_assets(&mut self, dir: &Path) {
         for e in &mut self.entities {
             relativize_mesh(&mut e.mesh, dir);
+            for lod in &mut e.lods {
+                relativize_mesh(&mut lod.mesh, dir);
+            }
             relativize_material(&mut e.material, dir);
+        }
+        if let Some(env) = &mut self.environment {
+            env.hdr = relativize_path(dir, &env.hdr);
         }
     }
 
@@ -347,6 +379,7 @@ impl Prefab {
                 name: new_name,
                 tags: e.tags.clone(),
                 mesh: e.mesh.clone(),
+                lods: e.lods.clone(),
                 material: e.material.clone(),
                 at: e.at + offset,
                 rotation: e.rotation,
@@ -403,6 +436,10 @@ impl SceneEntity {
             .rotation(self.rotation)
             .scale(self.scale)
             .tags(self.tags.clone());
+        for lod in &self.lods {
+            let (lod_mesh, _) = lod.mesh.resolve()?;
+            entity = entity.lod(lod_mesh, lod.distance);
+        }
         if let Some(parent) = &self.parent {
             entity = entity.parent(parent.clone());
         }
@@ -447,6 +484,9 @@ impl Kerabit {
             .ambient(scene.ambient)
             .camera(scene.to_camera())
             .light(scene.to_light());
+        if let Some(env) = &scene.environment {
+            self = self.environment(env.hdr.clone(), env.intensity);
+        }
         for entity in scene.build_entities()? {
             self = self.spawn(entity);
         }
@@ -461,9 +501,27 @@ impl Kerabit {
         let path = path.as_ref();
         let scene = Scene::load(path)?;
         let attachments = scene.script_attachments();
+        let environment = scene
+            .environment
+            .as_ref()
+            .map(|e| (resolve_relative(path.parent(), &e.hdr), e.intensity));
         let mut k = self.scene(scene)?;
+        if let Some((hdr, intensity)) = environment {
+            k = k.environment(hdr, intensity);
+        }
         load_script_attachments(&mut k.scripts, attachments, path.parent())?;
         Ok(k)
+    }
+}
+
+/// Join `rel` onto `base` unless it is already absolute.
+pub(crate) fn resolve_relative(base: Option<&Path>, rel: &Path) -> PathBuf {
+    if rel.is_absolute() {
+        rel.to_path_buf()
+    } else if let Some(dir) = base {
+        dir.join(rel)
+    } else {
+        rel.to_path_buf()
     }
 }
 
@@ -506,6 +564,9 @@ struct SceneFile {
     ambient: [f32; 3],
     camera: CameraFile,
     light: LightFile,
+    /// Additive optional IBL environment (scene version 1); omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    environment: Option<EnvironmentFile>,
     #[serde(default)]
     entities: Vec<EntityFile>,
     /// Additive reserved bag (scene version 1); omitted when empty.
@@ -514,6 +575,23 @@ struct SceneFile {
     /// Additive reserved bag (scene version 1); omitted when empty.
     #[serde(default, skip_serializing_if = "SceneMap::is_empty")]
     extras: SceneMap,
+}
+
+#[derive(Serialize, Deserialize)]
+struct EnvironmentFile {
+    hdr: String,
+    #[serde(default = "default_env_intensity")]
+    intensity: f32,
+}
+
+fn default_env_intensity() -> f32 {
+    1.0
+}
+
+#[derive(Serialize, Deserialize)]
+struct LodFile {
+    mesh: MeshFile,
+    distance: f32,
 }
 
 fn default_clear() -> [f32; 3] {
@@ -567,6 +645,9 @@ struct EntityFile {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
     mesh: MeshFile,
+    /// Additive optional LOD chain (scene version 1); omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    lods: Vec<LodFile>,
     #[serde(default)]
     material: MaterialFile,
     #[serde(default = "default_zero3")]
@@ -655,6 +736,10 @@ impl SceneFile {
                 intensity: scene.light.intensity,
                 color: scene.light.color.to_rgb_array(),
             },
+            environment: scene.environment.as_ref().map(|e| EnvironmentFile {
+                hdr: e.hdr.to_string_lossy().into_owned(),
+                intensity: e.intensity,
+            }),
             entities: scene.entities.iter().map(EntityFile::from_scene).collect(),
             components: scene.components.clone(),
             extras: scene.extras.clone(),
@@ -677,6 +762,10 @@ impl SceneFile {
                 intensity: self.light.intensity,
                 color: color_from_rgb(self.light.color),
             },
+            environment: self.environment.map(|e| SceneEnvironment {
+                hdr: PathBuf::from(e.hdr),
+                intensity: e.intensity,
+            }),
             entities: self.entities.into_iter().map(EntityFile::into_scene).collect(),
             components: self.components,
             extras: self.extras,
@@ -690,6 +779,14 @@ impl EntityFile {
             name: e.name.clone(),
             tags: e.tags.clone(),
             mesh: MeshFile::from_scene(&e.mesh),
+            lods: e
+                .lods
+                .iter()
+                .map(|l| LodFile {
+                    mesh: MeshFile::from_scene(&l.mesh),
+                    distance: l.distance,
+                })
+                .collect(),
             material: MaterialFile {
                 color: e.material.color.to_rgb_array(),
                 roughness: e.material.roughness,
@@ -714,6 +811,14 @@ impl EntityFile {
             name: self.name,
             tags: self.tags,
             mesh: self.mesh.into_scene(),
+            lods: self
+                .lods
+                .into_iter()
+                .map(|l| SceneLod {
+                    mesh: l.mesh.into_scene(),
+                    distance: l.distance,
+                })
+                .collect(),
             material: SceneMaterial {
                 color: color_from_rgb(self.material.color),
                 roughness: self.material.roughness,
@@ -849,11 +954,13 @@ mod tests {
                 intensity: 1.5,
                 color: Color::rgb(1.0, 0.95, 0.9),
             },
+            environment: None,
             entities: vec![
                 SceneEntity {
                     name: "ground".into(),
                     tags: vec!["ground".into()],
                     mesh: SceneMesh::Plane { size: 20.0 },
+                    lods: Vec::new(),
                     material: SceneMaterial {
                         color: Color::GRAY,
                         roughness: 0.9,
@@ -871,6 +978,7 @@ mod tests {
                     name: "box".into(),
                     tags: vec!["wall".into()],
                     mesh: SceneMesh::Cube,
+                    lods: Vec::new(),
                     material: SceneMaterial {
                         color: Color::ORANGE,
                         roughness: 0.35,
@@ -888,6 +996,7 @@ mod tests {
                     name: "child".into(),
                     tags: Vec::new(),
                     mesh: SceneMesh::Cube,
+                    lods: Vec::new(),
                     material: SceneMaterial {
                         color: Color::WHITE,
                         roughness: 0.5,
@@ -980,6 +1089,45 @@ mod tests {
         );
         let round = Scene::from_json(&scene.to_json().unwrap()).unwrap();
         assert_eq!(round, scene);
+    }
+
+    #[test]
+    fn environment_and_lods_round_trip() {
+        let json = r#"{
+          "version": 1,
+          "camera": {"fov_y": 60.0, "eye": [0,2,5], "target": [0,0,0], "near": 0.1, "far": 100.0},
+          "light": {"direction": [0,-1,0], "intensity": 1.0, "color": [1,1,1]},
+          "environment": {"hdr": "sky/dusk.hdr", "intensity": 1.5},
+          "entities": [{
+            "name": "rock",
+            "mesh": {"type": "cube"},
+            "lods": [
+              {"mesh": {"type": "plane", "size": 1.0}, "distance": 25.0},
+              {"mesh": {"type": "cube"}, "distance": 60.0}
+            ]
+          }, {"name": "plain", "mesh": {"type": "cube"}}]
+        }"#;
+        let scene = Scene::from_json(json).expect("parse");
+        let env = scene.environment.as_ref().expect("environment");
+        assert_eq!(env.hdr, PathBuf::from("sky/dusk.hdr"));
+        assert!((env.intensity - 1.5).abs() < 1e-6);
+        assert_eq!(scene.entities[0].lods.len(), 2);
+        assert!((scene.entities[0].lods[0].distance - 25.0).abs() < 1e-6);
+        assert!(scene.entities[1].lods.is_empty());
+
+        let out = scene.to_json().expect("serialize");
+        assert!(out.contains("\"environment\""));
+        assert!(out.contains("\"lods\""));
+        let again = Scene::from_json(&out).expect("reparse");
+        assert_eq!(again, scene);
+
+        // Omitted fields stay omitted so old files keep their shape.
+        let plain = Scene::default().to_json().unwrap();
+        assert!(!plain.contains("environment") && !plain.contains("lods"));
+
+        // LODs become spawn descriptors with GPU-ready meshes.
+        let entities = scene.build_entities().expect("entities");
+        assert_eq!(entities[0].lods.len(), 2);
     }
 
     #[test]
@@ -1082,6 +1230,7 @@ mod tests {
                     name: "hazard".into(),
                     tags: vec!["hazard".into()],
                     mesh: SceneMesh::Cube,
+                    lods: Vec::new(),
                     material: SceneMaterial {
                         color: Color::rgb(0.9, 0.1, 0.2),
                         roughness: 0.6,
@@ -1099,6 +1248,7 @@ mod tests {
                     name: "marker".into(),
                     tags: Vec::new(),
                     mesh: SceneMesh::Cube,
+                    lods: Vec::new(),
                     material: SceneMaterial {
                         color: Color::WHITE,
                         roughness: 0.5,
@@ -1123,6 +1273,7 @@ mod tests {
             name: "hazard".into(),
             tags: Vec::new(),
             mesh: SceneMesh::Cube,
+            lods: Vec::new(),
             material: SceneMaterial {
                 color: Color::WHITE,
                 roughness: 0.5,
