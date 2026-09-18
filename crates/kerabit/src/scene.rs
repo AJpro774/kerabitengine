@@ -13,7 +13,7 @@ use crate::entity::Entity;
 use crate::material::Material;
 use crate::mesh::Mesh;
 use crate::Kerabit;
-use kerabit_script::ScriptRuntime;
+use kerabit_juni::ScriptRuntime;
 
 /// Errors from loading or saving a [`.kerabit.json`](Scene) file.
 #[derive(Debug, thiserror::Error)]
@@ -98,7 +98,7 @@ impl Scene {
     /// Script files attached via `extras.script` or `components.script`.
     ///
     /// Each item is `(relative path, optional entity name)`. A `None` entity is
-    /// a scene-level script; otherwise `self` in Rhai is that entity's name.
+    /// a scene-level script; otherwise `self_entity()` in the script is that entity.
     pub fn script_attachments(&self) -> Vec<(String, Option<String>)> {
         let mut out = Vec::new();
         if let Some(p) = map_script_path(&self.extras).or_else(|| map_script_path(&self.components))
@@ -456,7 +456,7 @@ impl Kerabit {
     /// Load `.kerabit.json` from `path` and apply it (see [`Kerabit::scene`]).
     ///
     /// Also compiles `extras.script` / `components.script` paths relative to
-    /// the scene file (Rhai, 1.1).
+    /// the scene file (Juni, 3.0).
     pub fn load_scene(self, path: impl AsRef<Path>) -> Result<Self, SceneError> {
         let path = path.as_ref();
         let scene = Scene::load(path)?;
@@ -988,20 +988,20 @@ mod tests {
           "version": 1,
           "camera": {"fov_y": 60, "eye": [0, 0, 5], "target": [0, 0, 0]},
           "light": {"direction": [0, -1, 0]},
-          "extras": {"script": "hello.rhai"},
+          "extras": {"script": "hello.juni"},
           "entities": [
             {
               "name": "cube",
               "mesh": {"type": "cube"},
-              "extras": {"script": "spin.rhai"}
+              "extras": {"script": "spin.juni"}
             }
           ]
         }"#;
         let scene = Scene::from_json(json).expect("load scripts");
         let atts = scene.script_attachments();
         assert_eq!(atts.len(), 2);
-        assert_eq!(atts[0], ("hello.rhai".into(), None));
-        assert_eq!(atts[1], ("spin.rhai".into(), Some("cube".into())));
+        assert_eq!(atts[0], ("hello.juni".into(), None));
+        assert_eq!(atts[1], ("spin.juni".into(), Some("cube".into())));
     }
 
     #[test]

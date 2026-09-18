@@ -15,7 +15,7 @@
     "color": [1.0, 1.0, 1.0]
   },
   "extras": {
-    "script": "hello.rhai"
+    "script": "hello.juni"
   },
   "entities": [
     {

@@ -1,0 +1,85 @@
+# Kerabit host API for Juni scripts — Frozen for 3.0.
+#
+# This module is compiled as a prelude: every export below is visible in a
+# game script without an import. Entities are opaque handles (`i32`); `0`
+# means "no entity". Strings are ASCII for the overlay atlas.
+#
+# Lifecycle: `fn main() -> i32` runs once when the script loads (or reloads),
+# `fn frame(dt: f32) -> i32` runs every frame after the Rust `run` closure.
+# Keep per-game values in a `state:` block.
+
+export extern "kerabit":
+    # --- frame / app ---
+    fn dt() -> f32
+    fn quit()
+    fn reload_scripts()
+    fn log(text: str)
+
+    # --- input (names are case-insensitive: "W", "Space", "Escape", "Left") ---
+    fn key_down(name: str) -> bool
+    fn key_pressed(name: str) -> bool
+    fn mouse_x() -> f32
+    fn mouse_y() -> f32
+    fn mouse_down(button: str) -> bool
+    fn mouse_pressed(button: str) -> bool
+
+    # --- entity reads (handles) ---
+    fn entity(name: str) -> i32
+    fn self_entity() -> i32
+    fn exists(e: i32) -> bool
+    fn enabled(e: i32) -> bool
+    fn pos_x(e: i32) -> f32
+    fn pos_y(e: i32) -> f32
+    fn pos_z(e: i32) -> f32
+    fn scale_x(e: i32) -> f32
+    fn scale_y(e: i32) -> f32
+    fn scale_z(e: i32) -> f32
+    fn has_tag(e: i32, tag: str) -> bool
+    fn tag_count(tag: str) -> i32
+    fn tag_at(tag: str, index: i32) -> i32
+
+    # --- entity writes ---
+    fn set_pos(e: i32, x: f32, y: f32, z: f32)
+    fn translate(e: i32, x: f32, y: f32, z: f32)
+    fn rotate_x(e: i32, radians: f32)
+    fn rotate_y(e: i32, radians: f32)
+    fn rotate_z(e: i32, radians: f32)
+    fn set_scale(e: i32, x: f32, y: f32, z: f32)
+    fn set_enabled(e: i32, on: bool)
+    fn add_tag(e: i32, tag: str)
+    fn remove_tag(e: i32, tag: str)
+
+    # --- authorship (spawns take effect at the end of the frame) ---
+    fn despawn(e: i32)
+    fn spawn_cube(name: str, x: f32, y: f32, z: f32, r: f32, g: f32, b: f32) -> i32
+    fn spawn_cube_ex(name: str, x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32, r: f32, g: f32, b: f32) -> i32
+    fn spawn_plane(name: str, x: f32, y: f32, z: f32, size: f32, r: f32, g: f32, b: f32) -> i32
+    fn spawn_prefab(path: str, x: f32, y: f32, z: f32)
+
+    # --- physics helpers ---
+    fn move_planar(e: i32, dx: f32, dz: f32)
+    fn register_box(e: i32)
+
+    # --- juice / view ---
+    fn play(path: str)
+    fn play_at(path: str, x: f32, y: f32, z: f32)
+    fn spawn_particles(x: f32, y: f32, z: f32, count: i32, r: f32, g: f32, b: f32)
+    fn set_camera(eye_x: f32, eye_y: f32, eye_z: f32, target_x: f32, target_y: f32, target_z: f32)
+
+    # --- overlay (normalized 0..1, origin top-left) ---
+    fn ui_text(x: f32, y: f32, size: f32, r: f32, g: f32, b: f32, text: str)
+    fn ui_rect(x: f32, y: f32, w: f32, h: f32, r: f32, g: f32, b: f32, a: f32)
+
+# Planar (XZ) distance between two points.
+export fn dist_xz(ax: f32, az: f32, bx: f32, bz: f32) -> f32:
+    let dx = ax - bx
+    let dz = az - bz
+    return sqrt(dx * dx + dz * dz)
+
+# Planar (XZ) distance between two entities.
+export fn dist_between(a: i32, b: i32) -> f32:
+    return dist_xz(pos_x(a), pos_z(a), pos_x(b), pos_z(b))
+
+# True when two entities are within `radius` on the XZ plane.
+export fn near(a: i32, b: i32, radius: f32) -> bool:
+    return dist_between(a, b) < radius

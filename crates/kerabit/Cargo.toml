@@ -16,7 +16,7 @@ kerabit-assets = { workspace = true }
 kerabit-physics = { workspace = true }
 kerabit-anim = { workspace = true }
 kerabit-audio = { workspace = true }
-kerabit-script = { workspace = true }
+kerabit-juni = { workspace = true }
 image = { workspace = true }
 anyhow = { workspace = true }
 winit = { workspace = true }
@@ -57,8 +57,8 @@ name = "pbr_room"
 path = "../../examples/pbr_room.rs"
 
 [[example]]
-name = "hello_rhai"
-path = "../../examples/hello_rhai.rs"
+name = "hello_juni"
+path = "../../examples/hello_juni.rs"
 
 [lints]
 workspace = true

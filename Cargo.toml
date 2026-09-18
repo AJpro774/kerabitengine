@@ -11,11 +11,12 @@ members = [
     "crates/kerabit-physics",
     "crates/kerabit-anim",
     "crates/kerabit-audio",
-    "crates/kerabit-script",
+    "crates/kerabit-juni",
     "games/reach",
     "games/surge",
     "games/showcase",
     "games/spark",
+    "games/strike",
     "tools/kerabit-editor",
 ]
 
@@ -51,8 +52,7 @@ rodio = { version = "0.20", default-features = false, features = ["wav"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Scripting (2.0) — Rhai embed; rich host API for script-first games
-rhai = "1.21"
+# Scripting (3.0) — Juni compiled to WASM in-process; see crates/kerabit-juni
 
 # Workspace crates
 kerabit-math = { path = "crates/kerabit-math" }
@@ -64,7 +64,7 @@ kerabit-assets = { path = "crates/kerabit-assets" }
 kerabit-physics = { path = "crates/kerabit-physics" }
 kerabit-anim = { path = "crates/kerabit-anim" }
 kerabit-audio = { path = "crates/kerabit-audio" }
-kerabit-script = { path = "crates/kerabit-script" }
+kerabit-juni = { path = "crates/kerabit-juni" }
 
 [workspace.lints.rust]
 unsafe_code = "warn"

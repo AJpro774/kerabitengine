@@ -1,10 +1,10 @@
 # Kerabit Summit Roadmap
 
-Moonshot plan to level Kerabit into a serious tiny-engine competitor for small teams — still one composition for authors (`spawn` / `run` / scenes / editor / Rhai), deep enough to ship ambitious games.
+Moonshot plan to level Kerabit into a serious tiny-engine competitor for small teams — still one composition for authors (`spawn` / `run` / scenes / editor / Juni), deep enough to ship ambitious games.
 
 **Install stays the same:** [rustup](https://rustup.rs/) + `git clone` + `cargo run -p …` (no new installer).
 
-**Version path:** **`1.0.0`** Summit M0–M9 · **`2.0.0`** Scripting Summit (M10–M15) — rich Rhai host API + script-first proof game **Spark**.
+**Version path:** **`1.0.0`** Summit M0–M9 · **`2.0.0`** Scripting Summit (M10–M15) — rich Rhai host API + script-first proof game **Spark** · **`3.0.0`** Juni + UE5-class render tier (M16–M24) — Rhai replaced by compiled **Juni**, clustered lights / CSM / SSAO / IBL / SSR / TAA / LOD.
 
 ## Phase map (M0–M9) — complete
 
@@ -32,6 +32,22 @@ Moonshot plan to level Kerabit into a serious tiny-engine competitor for small t
 | **M14** — Proof game | `games/spark` script-first playable | `cargo run -p spark` |
 | **M15** — Product | Version `2.0.0`, docs/site, freeze host table | Release notes match host API |
 
+## Phase map (M16–M24) — Juni + UE5-class render tier (3.0)
+
+Scripting moves to **Juni** (statically typed, compiled to WASM in-process via [Juno](https://github.com/AJpro774/Juno) `v13.0.0` `extern` host imports) and the renderer grows the pillars a UE5 user expects, on the same tiny footprint.
+
+| Phase | Focus | Accept |
+|-------|--------|--------|
+| **M16** — Juni host | `kerabit-juni`: prelude, handle-based host table, wasmtime, `check_juni`; Rhai removed | `hello_juni` + Spark run from `.juni`; `cargo test` green |
+| **M17** — Author port | Editor Juni panel, MCP `check_juni` / scaffold, docs + site | Stranger path uses Juni end to end |
+| **M18** — G-buffer | Depth prepass + thin normal / roughness buffer shared by lit + post | Reach / Surge / Spark / editor render unchanged |
+| **M19** — Clustered lights | Storage-buffer lights (256) + froxel light lists | 200 point lights at 60 fps |
+| **M20** — Cascaded shadows | 4-cascade atlas, stable fit, cascade blend | No shimmer on Reach grounds |
+| **M21** — SSAO + IBL | Half-res AO; HDR equirect → prefiltered cubemap + irradiance; scene `environment` | Showcase reads an `.hdr` |
+| **M22** — SSR + TAA | Hierarchical-Z reflections with IBL fallback; motion vectors + jittered TAA resolve | Stable edges in motion |
+| **M23** — LOD | Author-supplied LOD chain + distance selection on top of frustum culling | 10k cubes + 200 lights at 60 fps |
+| **M24** — Kerabit 3.0 | Version `3.0.0`, CHANGELOG / site, Showcase exercises IBL + CSM + TAA, GitHub Release | Tagged on `main`; site live |
+
 ## Tracks
 
 Parallel work owns a track, not the whole monorepo:
@@ -39,25 +55,27 @@ Parallel work owns a track, not the whole monorepo:
 - **Engine-Render** — `kerabit-render`, shaders
 - **Engine-Simulation** — `kerabit-world`, `kerabit-physics`, `kerabit-anim`
 - **Engine-Audio** — `kerabit-audio`
-- **Engine-Script** — `kerabit-script` (Rhai host)
+- **Engine-Script** — `kerabit-juni` (Juni host + prelude)
 - **Editor** — `tools/kerabit-editor`
-- **Games** — `games/reach`, `games/surge`, `games/showcase`, `games/spark`
-- **Product** — `site/`, `.github/`, docs, packaging
+- **Games** — `games/reach`, `games/surge`, `games/showcase`, `games/spark`, `games/strike`
+- **Product** — `site/`, `.github/`, docs, packaging, `tools/kerabit-mcp`
 
-## Locked decisions (1.0 / 2.0)
+## Locked decisions (1.0 / 2.0 / 3.0)
 
 - Public game API stays tiny; breaks only with semver + CHANGELOG
 - Editor stays egui in `tools/`; never leak egui into `kerabit`
 - Platforms: macOS + Windows + Linux compile/run; player zips at least macOS + Windows
-- Scripting language = **Rhai** (`kerabit-script`); 2.0 freezes the rich host table in [API.md](API.md)
+- Scripting language = **Juni** (`kerabit-juni`); 3.0 freezes the host table in [API.md](API.md) and the prelude `crates/kerabit-juni/juni/kerabit.juni`. The compiler is pinned by git tag to Juno; language changes land in Juno first.
+- Rendering stays forward+ (clustered) on wgpu; no hardware ray tracing or virtualized geometry in 3.x
 
 ## Non-goals
 
-Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundling a DCC, rewriting Reach into Rhai.
+Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundling a DCC, rewriting Reach into Juni, Nanite-style geometry, hardware RT / full Lumen GI, an Actor/Component object model (3.x candidates).
 
 ## Status
 
 **M0–M9** — done (**Kerabit 1.0.0**)  
-**M10–M15** — done (**Kerabit 2.0.0** Scripting Summit)
+**M10–M15** — done (**Kerabit 2.0.0** Scripting Summit)  
+**M16–M24** — done (**Kerabit 3.0.0** Juni + render tier)
 
 See also [ARCHITECTURE.md](ARCHITECTURE.md), [API.md](API.md), and [README.md](README.md).

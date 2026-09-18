@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rhai scripting — Kerabit</title>
+    <title>Juni scripting — Kerabit</title>
     <meta
       name="description"
-      content="Kerabit 2.0 Rhai scripting: rich host API, Spark proof game, hot-reload, and the editor code panel."
+      content="Kerabit 3.0 Juni scripting: statically typed scripts compiled to WASM in-process, the Frozen for 3.0 host API, Spark, hot-reload, and the editor code panel."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,23 +33,52 @@
 
     <main class="docs">
       <nav class="docs-crumb">
-        <a href="/docs/">Docs</a> / Rhai scripting
+        <a href="/docs/">Docs</a> / Juni scripting
       </nav>
-      <h1>Rhai scripting</h1>
+      <h1>Juni scripting</h1>
       <p class="docs-lede">
-        Kerabit <strong>2.0</strong> embeds
-        <a href="https://rhai.rs/">Rhai</a> with a rich host API so you can ship
-        small games mostly in <code>.rhai</code>. The public Rust API from 1.0
-        stays frozen. egui stays in <code>kerabit-editor</code>.
+        Kerabit <strong>3.0</strong> scripts games in
+        <a href="https://github.com/AJpro774/Juno">Juni</a>: a statically typed
+        language with Python-like indentation that Kerabit compiles to
+        WebAssembly <em>in-process</em> and runs in an embedded, fuel-limited
+        runtime. Type errors show up as <code>file:line:col</code> before
+        Play; a runaway loop traps instead of hanging a frame. The public Rust
+        API from 1.0 stays frozen.
       </p>
 
       <h2>Try it</h2>
-      <pre class="code"><code>cargo run -p kerabit --example hello_rhai
-cargo run -p spark</code></pre>
+      <pre class="code"><code>cargo run -p kerabit --example hello_juni
+cargo run -p spark
+cargo run -p kerabit-juni --bin check_juni -- games/spark/scenes/spark.juni</code></pre>
       <p>
-        <strong>hello_rhai</strong> spins a cube.
+        <strong>hello_juni</strong> spins a cube.
         <strong>Spark</strong> is the script-first proof game (WASD, goal pad,
-        hazards) — logic in <code>games/spark/scenes/spark.rhai</code>.
+        hazards) — logic in <code>games/spark/scenes/spark.juni</code>.
+        <code>check_juni</code> type-checks a script against the host API
+        without opening a window.
+      </p>
+
+      <h2>Shape of a script</h2>
+      <pre class="code"><code>state:
+    cube: i32 = 0
+    t: f32 = 0.0
+
+fn main() -&gt; i32:
+    cube = entity("cube")
+    return 0
+
+fn frame(dt: f32) -&gt; i32:
+    if key_pressed("Escape"):
+        quit()
+    t = t + dt
+    rotate_y(cube, 1.1 * dt)
+    return 0</code></pre>
+      <p>
+        <code>main</code> runs once when the script loads (or hot-reloads);
+        <code>frame</code> runs every frame. Values that must survive between
+        frames live in the <code>state:</code> block. Entities are opaque
+        <code>i32</code> handles from <code>entity("name")</code>; <code>0</code>
+        means "no such entity" and every write to it is a no-op.
       </p>
 
       <h2>Attach a script</h2>
@@ -62,46 +91,56 @@ cargo run -p spark</code></pre>
       </p>
       <pre class="code"><code>{
   "version": 1,
-  "extras": { "script": "game.rhai" },
-  "entities": [{ "name": "player", "extras": { "script": "player.rhai" } }]
+  "extras": { "script": "game.juni" },
+  "entities": [{ "name": "player", "extras": { "script": "player.juni" } }]
 }</code></pre>
       <p>
-        Prefer <code>fn init()</code> / <code>fn update()</code>. Use
-        <code>set</code> / <code>get</code> / <code>has</code> for persistent
-        values across frames. Entity scripts bind <code>self</code>.
+        Entity scripts get their owner from <code>self_entity()</code>.
       </p>
 
       <h2>When they run</h2>
       <p>
         Each frame: Rust <code>run</code> closure, <em>then</em> every loaded
-        script, then render. Missing names are no-ops. Parse errors fail load;
-        runtime errors set <code>ctx.script_error()</code>. Loaded files
-        <strong>hot-reload</strong> when their mtime changes.
+        script, then render. Scripts read a snapshot of the world and queue
+        writes, which the engine applies after the last script. Type errors
+        fail load with positioned diagnostics; traps set
+        <code>ctx.script_error()</code> and pause that script until the file
+        <strong>hot-reloads</strong> on save (state resets).
       </p>
 
-      <h2>Host API (Frozen for 2.0)</h2>
+      <h2>Host API (Frozen for 3.0)</h2>
       <ul class="docs-list">
-        <li><code>dt()</code> · <code>quit()</code> · <code>reload_scripts()</code></li>
-        <li><code>key_down</code> / <code>key_pressed</code> · <code>mouse_pos</code> · <code>mouse_button_down</code> / <code>pressed</code></li>
-        <li><code>pos</code> / <code>get_pos</code> · <code>scale</code> · <code>enabled</code> · <code>has_tag</code> · <code>exists</code> · <code>names_with_tag</code></li>
-        <li><code>rotate_*</code> · <code>translate</code> · <code>set_pos</code> · <code>set_scale</code> · <code>set_enabled</code> · <code>add_tag</code> / <code>remove_tag</code></li>
-        <li><code>despawn</code> · <code>spawn_cube</code> / <code>spawn_cube_ex</code> · <code>spawn_plane</code> · <code>spawn_prefab</code></li>
-        <li><code>move_planar</code> · <code>register_box</code> (static AABB from entity scale)</li>
-        <li><code>play</code> / <code>play_at</code> · <code>spawn_particles</code> · <code>set_camera</code></li>
-        <li><code>ui_text</code> / <code>ui_rect</code> (normalized coords; ASCII text only)</li>
-        <li><code>set</code> / <code>get</code> / <code>has</code> — persistent store</li>
+        <li><code>dt()</code> · <code>quit()</code> · <code>reload_scripts()</code> · <code>log(text)</code></li>
+        <li><code>key_down(name)</code> / <code>key_pressed(name)</code> · <code>mouse_x()</code> / <code>mouse_y()</code> · <code>mouse_down(btn)</code> / <code>mouse_pressed(btn)</code></li>
+        <li><code>entity(name)</code> · <code>self_entity()</code> · <code>exists(e)</code> · <code>enabled(e)</code> · <code>pos_x/y/z(e)</code> · <code>scale_x/y/z(e)</code> · <code>has_tag(e, tag)</code> · <code>tag_count(tag)</code> / <code>tag_at(tag, i)</code></li>
+        <li><code>set_pos</code> · <code>translate</code> · <code>rotate_x/y/z</code> · <code>set_scale</code> · <code>set_enabled</code> · <code>add_tag</code> / <code>remove_tag</code> (all take the handle first)</li>
+        <li><code>despawn(e)</code> · <code>spawn_cube</code> / <code>spawn_cube_ex</code> · <code>spawn_plane</code> (return the new handle) · <code>spawn_prefab(path, x, y, z)</code></li>
+        <li><code>move_planar(e, dx, dz)</code> · <code>register_box(e)</code> (static AABB from entity scale)</li>
+        <li><code>play(path)</code> / <code>play_at(path, x, y, z)</code> · <code>spawn_particles(x, y, z, count, r, g, b)</code> · <code>set_camera(ex, ey, ez, tx, ty, tz)</code></li>
+        <li><code>ui_text(x, y, size, r, g, b, text)</code> / <code>ui_rect(x, y, w, h, r, g, b, a)</code> (normalized coords; ASCII text only)</li>
+        <li>Helpers written in Juni: <code>dist_xz</code> · <code>dist_between(a, b)</code> · <code>near(a, b, radius)</code></li>
       </ul>
+      <p>
+        Juni builtins such as <code>sqrt</code>, <code>clamp</code>,
+        <code>lerp</code>, <code>rand</code>, <code>str_len</code>, and
+        <code>print</code> work as usual; Juno's browser-only canvas / WebGPU
+        builtins are rejected at load with a hint. The full table with
+        signatures is the prelude itself:
+        <code>crates/kerabit-juni/juni/kerabit.juni</code>.
+      </p>
 
       <h2>Editor</h2>
       <p>
-        Script menu → Show panel, Check syntax, Reload from disk. Play loads
-        scripts and auto-reloads on file save. Details:
+        Script menu → Show panel, Check (types + host API), Reload from disk.
+        Play loads scripts and auto-reloads on file save. Details:
         <a href="/docs/editor">Editor guide</a>.
       </p>
 
       <p class="docs-foot-links">
         Contract:
         <a href="https://github.com/AJpro774/kerabitengine/blob/main/API.md">API.md</a>
+        · Language:
+        <a href="https://github.com/AJpro774/Juno/blob/main/docs/src/language/extern.md">Juni docs</a>
         · Next: <a href="/docs/editor">Editor guide</a>
       </p>
     </main>

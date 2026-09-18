@@ -65,7 +65,7 @@
       </section>
 
       <section id="install" class="band">
-        <h2>Kerabit 2.0 — clone &amp; cargo</h2>
+        <h2>Kerabit 3.0 — clone &amp; cargo</h2>
         <p>
           Install Rust stable via
           <a href="https://rustup.rs/">rustup</a>, then clone and run. Same
@@ -74,7 +74,7 @@
         <pre class="code"><code>git clone https://github.com/AJpro774/kerabitengine.git
 cd kerabitengine
 cargo run -p kerabit --example hello
-cargo run -p kerabit --example hello_rhai
+cargo run -p kerabit --example hello_juni
 cargo run -p spark
 cargo run -p kerabit-editor
 cargo run -p reach</code></pre>
@@ -135,13 +135,13 @@ cargo run -p reach</code></pre>
           <li>
             <a href="/docs/api-tour">
               <strong>API tour</strong>
-              <span>Builder, Context, scenes, lights, physics, audio, Rhai.</span>
+              <span>Builder, Context, scenes, lights, physics, audio, Juni.</span>
             </a>
           </li>
           <li>
             <a href="/docs/scripting">
-              <strong>Rhai scripting</strong>
-              <span>2.0 host API, Spark, hot-reload, editor panel.</span>
+              <strong>Juni scripting</strong>
+              <span>3.0 host API, typed scripts compiled to WASM, Spark, hot-reload, editor panel.</span>
             </a>
           </li>
           <li>
@@ -169,21 +169,24 @@ cargo run -p kerabit-editor</code></pre>
       <section id="changelog" class="band">
         <h2>Changelog</h2>
         <p>
-          Current line: <strong>2.0.0</strong> (Scripting Summit). Reach player zips remain on the 1.0 release tags until re-cut.
+          Current line: <strong>3.0.0</strong> (Juni + render tier). Reach player zips remain on the 1.0 release tags until re-cut.
           Highlights:
         </p>
         <ul class="changelog-snip">
           <li>
-            <strong>Product</strong> — docs site, Reach player zips for macOS +
-            Windows, Clippy CI + hardening.
+            <strong>Scripting</strong> — Juni replaces Rhai: statically typed
+            scripts compiled to WASM in-process, positioned diagnostics,
+            fuel-limited runtime, Frozen for 3.0 host API.
           </li>
           <li>
-            <strong>Engine</strong> — PBR-lite, multi-light, post, particles;
-            dynamics + character controller; spatial audio + buses.
+            <strong>Rendering</strong> — depth prepass + G-buffer, clustered
+            lights, cascaded shadows, SSAO, HDR image-based lighting, SSR,
+            TAA, mesh LOD.
           </li>
           <li>
-            <strong>Editor / games</strong> — in-viewport Play, undo, prefabs;
-            Reach campaign, Surge, Showcase.
+            <strong>Editor / games</strong> — Juni script panel, MCP
+            <code>check_juni</code>; Reach campaign, Surge, Spark, Strike,
+            Showcase.
           </li>
         </ul>
         <p class="note">

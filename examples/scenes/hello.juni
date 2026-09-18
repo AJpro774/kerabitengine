@@ -1,0 +1,15 @@
+# Hello Juni — `frame` runs every frame after the Rust `run` closure.
+# `dt` is seconds since the last frame. Escape quits.
+
+state:
+    cube: i32 = 0
+
+fn main() -> i32:
+    cube = entity("cube")
+    return 0
+
+fn frame(dt: f32) -> i32:
+    if key_pressed("Escape"):
+        quit()
+    rotate_y(cube, 1.1 * dt)
+    return 0

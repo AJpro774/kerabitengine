@@ -1,6 +1,11 @@
 /target/
 /dist/
+# Local Juno checkout override for kerabit-juni (see CONTRIBUTING.md)
+/.cargo/config.toml
 /tools/bin/
+/tools/kerabit-mcp/node_modules/
+/tools/kerabit-mcp/dist/
+.kerabit/
 **/*.rs.bk
 .DS_Store
 *.swp
@@ -11,3 +16,4 @@
 *.pdb
 __pycache__/
 *.pyc
+games/strike/assets/raw/

@@ -38,7 +38,7 @@
       <h1>Getting Started</h1>
       <p class="docs-lede">
         Stranger path: this site → clone → hello cube →
-        <code>hello_rhai</code> / <strong>Spark</strong> → editor. Budget about
+        <code>hello_juni</code> / <strong>Spark</strong> → editor. Budget about
         <strong>30 minutes</strong> on a machine with a working GPU driver
         (Metal / Vulkan / DX12 via wgpu).
       </p>
@@ -74,13 +74,14 @@ cd kerabitengine</code></pre>
           </p>
         </li>
         <li>
-          <h2>4. Scripting (2.0)</h2>
-          <pre class="code"><code>cargo run -p kerabit --example hello_rhai
+          <h2>4. Scripting (3.0)</h2>
+          <pre class="code"><code>cargo run -p kerabit --example hello_juni
 cargo run -p spark</code></pre>
           <p>
-            <code>hello_rhai</code> spins a cube from a <code>.rhai</code> file.
-            <strong>Spark</strong> is a short script-first game. Host API:
-            <a href="/docs/scripting">Rhai scripting</a>.
+            <code>hello_juni</code> spins a cube from a <code>.juni</code> file
+            (statically typed; compiled to WASM in-process, so typos fail before
+            Play). <strong>Spark</strong> is a short script-first game. Host API:
+            <a href="/docs/scripting">Juni scripting</a>.
           </p>
         </li>
         <li>

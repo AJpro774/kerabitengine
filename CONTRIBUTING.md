@@ -19,7 +19,8 @@ Author and edit playable scenes in **`kerabit-editor`** (`cargo run -p kerabit-e
 
 - Open levels under `games/reach/levels/` or `games/surge/levels/`.
 - File → Save writes `.kerabit.json`. Prefer **Play** in the editor to smoke a scene when available.
-- **Rhai (2.0)** — Rich host API + Script panel (Check / Reload); `extras.script` on the scene or an entity. `cargo run -p spark` · `cargo run -p kerabit --example hello_rhai`.
+- **Juni (3.0)** — Host API + Script panel (Check / Reload); `extras.script` on the scene or an entity. `cargo run -p spark` · `cargo run -p kerabit --example hello_juni`. Type-check a script: `cargo run -p kerabit-juni --bin check_juni -- path.juni`. The host table lives in `crates/kerabit-juni/juni/kerabit.juni`; adding a function means: extern line there → `host.rs` `func_wrap` → API.md row → MCP `docs.ts` table.
+- **MCP** — Agent tooling in `tools/kerabit-mcp` (stdio). See [tools/kerabit-mcp/README.md](tools/kerabit-mcp/README.md).
 - **Reach** — registered in `games/reach/src/main.rs` (`LEVEL_FILES` + `CHAPTERS`). Tags: `player`, `goal`, `ground`, `wall`, `hazard`. Keep unit-cube players (`half = 0.5`) and leave dodge gaps ≥ **1.0**. Best times live in `~/.kerabit/reach_progress.txt` (Windows: `%LOCALAPPDATA%/Kerabit/`).
 - **Surge** — registered in `games/surge/src/main.rs`. Same role tags (no `goal`); hazard motion tags: `orbit`, `slide_x`, `slide_z` (experimental — see API.md).
 
@@ -41,7 +42,19 @@ Accept: unzip `dist/Reach-macos.zip` on a Mac and double-click **Reach.app**; un
 
 ## Site docs
 
-Static pages under `site/docs/` (Getting Started, API tour, Rhai scripting, Editor). Deploy from repo root so `vercel.json` `cleanUrls` apply (`kerabitengine.vercel.app`). Keep the stranger path: rustup → clone → `cargo run -p kerabit --example hello` → `hello_rhai` / `spark` → `cargo run -p kerabit-editor`.
+Static pages under `site/docs/` (Getting Started, API tour, Juni scripting, Editor). Deploy from repo root so `vercel.json` `cleanUrls` apply (`kerabitengine.vercel.app`). Keep the stranger path: rustup → clone → `cargo run -p kerabit --example hello` → `hello_juni` / `spark` → `cargo run -p kerabit-editor`.
+
+## Working on the Juni compiler
+
+`kerabit-juni` pins the compiler crates to a **git tag** of [Juno](https://github.com/AJpro774/Juno) (see `crates/kerabit-juni/Cargo.toml`). To develop against a local checkout without editing manifests, add a gitignored `.cargo/config.toml` at the repo root:
+
+```toml
+[patch."https://github.com/AJpro774/Juno.git"]
+juni-driver = { path = "/path/to/Juno/crates/juni-driver" }
+juni-check = { path = "/path/to/Juno/crates/juni-check" }
+```
+
+Land language / codegen changes in Juno first, tag them, then bump the tag here in the same change as any prelude or host update.
 
 ## Local checks
 
@@ -54,7 +67,8 @@ cargo run -p surge
 cargo run -p kerabit-editor
 # M8 stress (~10k cubes; prefer --release)
 cargo run -p kerabit --example many_cubes --release
-cargo run -p kerabit --example hello_rhai
+cargo run -p kerabit --example hello_juni
+cargo run -p kerabit-juni --bin check_juni -- games/spark/scenes/spark.juni
 ```
 
 Prefer `cargo fmt` / `clippy -D warnings` before opening a PR. CI runs check+test+clippy on macOS, Windows, and Ubuntu (see `.github/workflows/ci.yml`).

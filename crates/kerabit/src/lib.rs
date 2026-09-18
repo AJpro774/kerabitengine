@@ -2,9 +2,10 @@
 //!
 //! # Status
 //!
-//! **2.0**: Scripting Summit — rich Rhai host API (`kerabit-script`) plus the 1.0
-//! Summit surface (scenes, mid-run reload, dynamics, character controller, clip
-//! animation). wgpu / winit types are never re-exported.
+//! **3.0**: Juni scripting (`kerabit-juni` — statically typed `.juni` scripts
+//! compiled to WASM in-process) and the UE5-class render tier, on top of the
+//! 1.0 Summit surface (scenes, mid-run reload, dynamics, character controller,
+//! clip animation). wgpu / winit types are never re-exported.
 //!
 //! Game authors should depend on this crate only.
 
@@ -58,8 +59,8 @@ pub mod audio {
 }
 
 pub mod script {
-    //! Rhai scripting runtime (2.0).
-    pub use kerabit_script::*;
+    //! Juni scripting runtime (3.0): compile `.juni` against the Kerabit prelude, run per frame.
+    pub use kerabit_juni::*;
 }
 
 pub use assets::{load_gltf, Texture};
@@ -79,7 +80,7 @@ pub use kerabit_physics::{
     MoveResult, PhysicsWorld, RayHit, SphereCastHit,
 };
 pub use kerabit_render::{Camera, Light, LightKind, ParticleBurst, MAX_LIGHTS};
-pub use kerabit_script::{ScriptError, ScriptRuntime};
+pub use kerabit_juni::{ScriptError, ScriptRuntime};
 pub use kerabit_world::{EntityId, Transform, World, LAYER_DEFAULT};
 pub use material::Material;
 pub use mesh::Mesh;

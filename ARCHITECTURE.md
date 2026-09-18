@@ -2,7 +2,7 @@
 
 Kerabit is a multi-crate Cargo workspace. Game authors depend only on **`kerabit`**. Internals may use wgpu/winit; those types must never leak through the public facade.
 
-**Summit moonshot:** M0–M9 (1.0) and M10–M15 Scripting Summit (2.0) live in [ROADMAP.md](ROADMAP.md). Install remains rustup + cargo.
+**Summit moonshot:** M0–M9 (1.0), M10–M15 Scripting Summit (2.0), and M16–M24 Juni + render tier (3.0) live in [ROADMAP.md](ROADMAP.md). Install remains rustup + cargo.
 
 ## Crate map
 
@@ -18,8 +18,8 @@ Kerabit is a multi-crate Cargo workspace. Game authors depend only on **`kerabit
 | `kerabit-physics` | AABB / raycast / dynamics / character controller | P6 / M2 |
 | `kerabit-anim` | Clip playback on transform hierarchies | M2 |
 | `kerabit-audio` | Playback / spatial / buses / streaming music | P6 / M3 |
-| `kerabit-script` | Rhai runtime + rich host API | 2.0 |
-| `kerabit-editor` (`tools/`) | Dev-only egui level editor + Rhai panel | E1–E2 / 2.0 |
+| `kerabit-juni` | Juni compiler embed (`juni-driver`) + wasmtime host API | 3.0 |
+| `kerabit-editor` (`tools/`) | Dev-only egui level editor + Juni panel | E1–E2 / 3.0 |
 
 ```
 kerabit
@@ -32,10 +32,12 @@ kerabit
   ├── kerabit-physics    → math
   ├── kerabit-anim       → math, world
   ├── kerabit-audio
-  └── kerabit-script     → rhai, world, input, math
+  └── kerabit-juni       → juni-driver / juni-check (git, Juno v13.0.0), wasmtime, world, input, math
 
 tools/kerabit-editor → kerabit + kerabit-render (+ egui; not shipped with games)
 ```
+
+**Scripting boundary (3.0):** `kerabit-juni` compiles a `.juni` file in-process against the prelude [`juni/kerabit.juni`](crates/kerabit-juni/juni/kerabit.juni) (an `export extern "kerabit":` block plus Juni helpers) and instantiates the WASM with a `wasmtime::Linker` that supplies the `kerabit` module and the pure `env` builtins (math / strings / print). Each frame the runtime snapshots the world (names → positions / scales / tags) into a `Host`, moves it into each script's `Store` for `frame(dt)`, and takes it back with queued `WorldOp`s + `ScriptEffects`, which `Context` applies afterwards. Scripts never hold engine references; entity handles are interned names. Fuel (`consume_fuel`) bounds each call so a runaway loop traps instead of hanging the frame.
 
 **Editor boundary:** egui lives only in `tools/kerabit-editor`. The 3D viewport renders the live `Scene` through [`OffscreenLitRenderer`](crates/kerabit-render/src/offscreen.rs) (same lit path as games) into an egui paint callback. Picking helpers (`ray_from_ndc`, mesh AABB, `pick_closest`) live in `kerabit-render` so the game API stays free of UI crates.
 Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `include_str!`.
@@ -44,7 +46,7 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 
 1. Pump window events → update [`kerabit_input::InputState`]
 2. Clear UI draw list; call game `run` closure with [`Context`](API.md) (`dt`, input, world, camera, physics, audio, `ui`, quit; E0 also wires GPU + renderables for `apply_scene` / `despawn` / `spawn`)
-3. Tick loaded Rhai scripts (`kerabit-script`) against the same world / input / quit
+3. Tick loaded Juni scripts (`kerabit-juni`) against the same world / input / quit
 4. Clear input edges / mouse delta (`end_frame`)
 5. [`World::update_world_matrices`] — dirty local TRS, then parent→child world matrices
 6. Build draw list from **enabled** world entities + per-entity mesh / albedo / roughness (world matrix); despawned entities must leave the renderable map (`Context::despawn` / `clear_world`)
@@ -56,7 +58,7 @@ Shaders live in `crates/kerabit-render/shaders/` as `.wgsl` files included via `
 
 **P2 render harnesses** remain: `cargo run -p kerabit-render --example two_meshes`.  
 **P3 flagship:** `cargo run -p kerabit --example playground`.  
-**2.0 Rhai:** `cargo run -p kerabit --example hello_rhai` · proof game: `cargo run -p spark`.  
+**3.0 Juni:** `cargo run -p kerabit --example hello_juni` · proof game: `cargo run -p spark`.  
 **M1 PBR room:** `cargo run -p kerabit --example pbr_room`.  
 **P4 stress:** `cargo run -p kerabit --example many_cubes --release`.  
 **P5 assets:** `cargo run -p kerabit --example load_mesh`.  
@@ -146,8 +148,9 @@ Harness: `cargo run -p kerabit-render --example two_meshes` (plane + cube).
 | M7 Product | **Done** | Docs site, Reach macOS+Windows zips, tag-triggered packaging |
 | M8 Hardening | **Done** | Clippy CI, frustum cull, 16k instances, ~10k cubes |
 | M9 Kerabit 1.0 | **Done** | Workspace `1.0.0`; GitHub Release; site launch |
-| 1.1 Rhai | **Done** | `kerabit-script`; scene `extras.script`; editor code panel |
-| 2.0 Scripting Summit | **Done** | Rich host API; Spark; hot-reload; Frozen for 2.0 table |
+| 1.1 Rhai | **Done** (superseded) | `kerabit-script`; scene `extras.script`; editor code panel |
+| 2.0 Scripting Summit | **Done** (superseded) | Rich host API; Spark; hot-reload; Frozen for 2.0 table |
+| 3.0 Juni scripting | **Done** | `kerabit-juni`: Juni → WASM in-process, wasmtime host, prelude, `check_juni`; Rhai removed |
 
 ## Deps
 
@@ -168,7 +171,8 @@ Workspace-shared dependencies are declared in the root `Cargo.toml`.
 | `image` | PNG (feature-gated) decode → RGBA8 albedo textures |
 | `rodio` | P6/M3 audio via cpal; **WAV-only** (`default-features = false`, `features = ["wav"]`) — spatial `SpatialSink`, mix buses, streaming music without mp3/flac/vorbis decode bloat |
 | `serde` / `serde_json` | P7 `.kerabit.json` scene save/load mirroring the public spawn API (entities, transforms, mesh primitives/paths, camera, lights) |
-| `rhai` | 2.0 scripting embed (pure Rust; no Lua/C FFI). Host API lives in `kerabit-script`. |
+| `juni-driver` / `juni-check` | 3.0 Juni compiler, pulled by git tag from [Juno](https://github.com/AJpro774/Juno) (`v13.0.0`); compiles scripts to WASM in-process. Host API lives in `kerabit-juni`. |
+| `wasmtime` | Cranelift JIT for compiled scripts (`default-features = false`, `cranelift` + `runtime` + `std`); fuel metering bounds each call. Swap for `wasmi` if binary size ever matters more than speed. |
 
 **Not OK:** Bevy/Unity/Godot as deps; bundling another engine; multi-GB assets; ML runtimes; Electron.
 

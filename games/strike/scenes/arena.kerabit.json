@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "clear_color": [0.06, 0.07, 0.09],
+  "ambient": [0.12, 0.13, 0.16],
+  "camera": {
+    "fov_y": 75.0,
+    "eye": [-5.0, 1.6, 5.0],
+    "target": [0.0, 1.2, 0.0],
+    "near": 0.05,
+    "far": 80.0
+  },
+  "light": {
+    "direction": [-0.35, -1.0, -0.2],
+    "intensity": 1.15,
+    "color": [1.0, 0.96, 0.9]
+  },
+  "entities": [
+    {
+      "name": "ground",
+      "tags": ["ground"],
+      "mesh": { "type": "plane", "size": 16.0 },
+      "material": { "color": [0.28, 0.3, 0.32], "roughness": 0.94 },
+      "at": [0.0, 0.0, 0.0]
+    },
+    {
+      "name": "wall_n",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.42, 0.4, 0.36], "roughness": 0.78 },
+      "at": [0.0, 2.0, -8.0],
+      "scale": [16.5, 4.0, 0.45]
+    },
+    {
+      "name": "wall_s",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.42, 0.4, 0.36], "roughness": 0.78 },
+      "at": [0.0, 2.0, 8.0],
+      "scale": [16.5, 4.0, 0.45]
+    },
+    {
+      "name": "wall_w",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.4, 0.38, 0.34], "roughness": 0.78 },
+      "at": [-8.0, 2.0, 0.0],
+      "scale": [0.45, 4.0, 16.5]
+    },
+    {
+      "name": "wall_e",
+      "tags": ["wall"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.4, 0.38, 0.34], "roughness": 0.78 },
+      "at": [8.0, 2.0, 0.0],
+      "scale": [0.45, 4.0, 16.5]
+    },
+    {
+      "name": "player",
+      "tags": ["player"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.2, 0.2, 0.22], "roughness": 0.8 },
+      "at": [-5.0, 0.9, 5.0],
+      "scale": [0.7, 1.8, 0.7]
+    },
+    {
+      "name": "weapon",
+      "tags": ["weapon"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/pistol.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.45 },
+      "at": [-5.0, 1.4, 4.6],
+      "scale": [1.0, 1.0, 1.0]
+    },
+    {
+      "name": "crate_a",
+      "tags": ["cover"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/crate.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.85 },
+      "at": [2.2, 0.0, -1.8]
+    },
+    {
+      "name": "crate_b",
+      "tags": ["cover"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/crate.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.85 },
+      "at": [-2.4, 0.0, 2.6]
+    },
+    {
+      "name": "crate_c",
+      "tags": ["cover"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/crate.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.85 },
+      "at": [4.6, 0.0, 3.2]
+    },
+    {
+      "name": "barrel_a",
+      "tags": ["cover"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/barrel.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.55 },
+      "at": [-3.5, 0.0, -3.2]
+    },
+    {
+      "name": "barrel_b",
+      "tags": ["cover"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/barrel.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.55 },
+      "at": [1.2, 0.0, 4.4]
+    },
+    {
+      "name": "cover_block",
+      "tags": ["cover"],
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.38, 0.4, 0.42], "roughness": 0.7 },
+      "at": [0.0, 0.7, 0.0],
+      "scale": [2.4, 1.4, 0.7]
+    },
+    {
+      "name": "enemy_a",
+      "tags": ["enemy"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
+      "at": [5.5, 0.0, -5.2]
+    },
+    {
+      "name": "enemy_b",
+      "tags": ["enemy"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
+      "at": [-5.2, 0.0, -5.4]
+    },
+    {
+      "name": "enemy_c",
+      "tags": ["enemy"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
+      "at": [6.0, 0.0, 0.8]
+    },
+    {
+      "name": "enemy_d",
+      "tags": ["enemy"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
+      "at": [-1.5, 0.0, -6.2]
+    },
+    {
+      "name": "enemy_e",
+      "tags": ["enemy"],
+      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
+      "at": [3.4, 0.0, 6.0]
+    }
+  ]
+}

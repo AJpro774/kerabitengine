@@ -1,4 +1,4 @@
-//! Spark — Kerabit 2.0 proof: almost all gameplay lives in `spark.rhai`.
+//! Spark — Kerabit 3.0 proof: almost all gameplay lives in `spark.juni`.
 //!
 //! ```bash
 //! cargo run -p spark

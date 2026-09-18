@@ -37,7 +37,7 @@ use crate::input_map::{map_key, map_mouse_button};
 use crate::material::Material;
 use crate::scene::SceneError;
 use crate::ui::Ui;
-use kerabit_script::ScriptRuntime;
+use kerabit_juni::ScriptRuntime;
 
 /// Game-facing engine builder. Call [`Kerabit::run`] to open a window.
 pub struct Kerabit {
@@ -82,7 +82,7 @@ impl Kerabit {
         self
     }
 
-    /// Compile and attach a scene-level `.rhai` file (runs every frame after the Rust `run` closure).
+    /// Compile and attach a scene-level `.juni` script (runs every frame after the Rust `run` closure).
     pub fn script(mut self, path: impl AsRef<Path>) -> Result<Self, crate::ScriptError> {
         self.scripts.load_file(path, None)?;
         Ok(self)

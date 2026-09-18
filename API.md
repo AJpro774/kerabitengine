@@ -2,11 +2,11 @@
 
 This document is the **stable target** for game-facing types. Changes require updating this file in the same change.
 
-> **Kerabit `2.0.0`:** frozen 1.0 surfaces stay frozen. Rhai scripting host API is **Frozen for 2.0**. wgpu / winit types are not part of the public surface.
+> **Kerabit `3.0.0`:** frozen 1.0 surfaces stay frozen. Scripting is **Juni** (`kerabit-juni`); its host API is **Frozen for 3.0** and replaces the 2.0 Rhai table (`.rhai` files no longer load — the 3.0 major bump). wgpu / winit types are not part of the public surface.
 
 ## 1.0 freeze
 
-Breaking a **Frozen for 1.0** or **Frozen for 2.0** item requires a semver bump and a [CHANGELOG.md](CHANGELOG.md) entry in the same change. Experimental surfaces may change without a major bump.
+Breaking a **Frozen for 1.0** or **Frozen for 3.0** item requires a semver bump and a [CHANGELOG.md](CHANGELOG.md) entry in the same change. Experimental surfaces may change without a major bump.
 
 | Surface | Status | Notes |
 |---------|--------|-------|
@@ -16,14 +16,14 @@ Breaking a **Frozen for 1.0** or **Frozen for 2.0** item requires a semver bump 
 | `Material` | **Frozen for 1.0** | `color` / `roughness` / `metallic` / texture + normal-map helpers (M1 additive) |
 | `Scene`, `SceneError`, `SCENE_VERSION`, `SceneMap` | **Frozen for 1.0** | `.kerabit.json` load/save; additive `components`/`extras` / `metallic`; `into_kerabit` |
 | `Context` | **Frozen for 1.0** + **2.0 additive** | `dt` / `input` / `world` / `camera` / `physics` / `audio` / `ui` / `quit` / `apply_scene` / `load_scene` / spawn helpers; M1 `lights` / `set_lights` / `spawn_particles`; M3 `sync_audio_listener`; `script_error` |
-| `ScriptRuntime`, `ScriptError`, `Kerabit::script` | **Frozen for 2.0** | Rich Rhai host API (see below); scene `extras.script` / `components.script`; auto-tick after `run`; hot-reload |
+| `ScriptRuntime`, `ScriptError`, `Kerabit::script` | **Frozen for 3.0** | Juni host API (see below); scene `extras.script` / `components.script` (`.juni`); auto-tick after `run`; hot-reload; `check_source` / `check_source_diagnostics` |
 | `Ui` | **Frozen for 1.0** | `text` / `rect` (normalized top-left coords) |
 | Physics (`PhysicsWorld`, `Aabb`, casts, `move_and_collide`) | **Frozen for 1.0** + **M2 additive** | Static AABBs; dynamics + `CharacterController` additive |
 | `kerabit-anim` (`AnimationClip`, `AnimationPlayer`) | **Additive (M2)** | Clip playback on hierarchy; glTF anim import stretch/minimal |
 | Audio (`AudioEngine`, `SoundId`) | **Frozen for 1.0** + **M3 additive** | WAV play / volume / null fallback; spatial `play_at`, `MixBus`, streaming `play_music`, `AudioListener` |
 | Math / color (`Vec3`, `Quat`, `Color`, …) | **Frozen for 1.0** | Via prelude |
 | `Camera`, `Light`, `LightKind`, `ParticleBurst`, `Key`, `InputState` | **Frozen for 1.0** | View/light/particles + input; multi-light ≤4 (M1) |
-| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change. M4 + Script panel (Check / Reload); Play hot-reloads `.rhai` |
+| `kerabit-editor` crate / UI | **Experimental** | Dev tool; Play/viewport may change. M4 + Script panel (Check / Reload); Play hot-reloads `.juni` |
 | Surge motion tags (`orbit`, `slide_x`, `slide_z`) | **Experimental** | Game convention used by Surge; not a general engine contract |
 | Anything marked unstable / internal | **Experimental** | Do not depend on from published games without pinning |
 
@@ -85,7 +85,7 @@ fn main() {
 | `ParticleBurst` | **M1** | Billboard burst via `ctx.spawn_particles` |
 | `Key`, `MouseButton`, `InputState` | **P3** | `key_down` / `key_pressed`; mouse pos / delta / buttons |
 | `Context` | **P3/P6/UI/E0/M1/M3/2.0** | `dt`, `input`, `world` / `world_mut`, `camera` / `camera_mut`, `physics`, `audio`, `ui`, `quit`; runtime `clear_world` / `despawn` / `spawn` / `apply_scene` / `load_scene`; `lights` / `set_lights` / `spawn_particles`; `sync_audio_listener`; `script_error` |
-| `ScriptRuntime`, `ScriptError` | **2.0** | Rich Rhai host; `Kerabit::script`; scene `extras.script`; hot-reload |
+| `ScriptRuntime`, `ScriptError` | **3.0** | Juni host (`kerabit-juni`); `Kerabit::script`; scene `extras.script`; hot-reload |
 | `Ui` | **UI** | Immediate-mode overlay: `text` / `rect` via `ctx.ui()` |
 | `World`, `Transform`, `EntityId`, `LAYER_DEFAULT` | **P4/E0/M2** | Hierarchy; enable/disable; tags / layer queries |
 | `PhysicsWorld`, `Aabb`, `ColliderId`, `RayHit`, `SphereCastHit`, `MoveResult` | **P6/E0** | Static AABBs; ray/sphere cast; kinematic block; `clear` |
@@ -172,7 +172,7 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 - **Lighting / sky (E5 + M1):** Scene authors one directional **sun** (`light.direction` / `intensity` / `color`) plus `ambient` and `clear_color`. Runtime code may set up to **4** lights via `Kerabit::lights` / `ctx.set_lights` (dir + point); soft shadows still follow the first directional only. The renderer paints a **sky gradient** using `clear_color` as the horizon (zenith is derived).
 - **Materials (M1):** optional additive `"metallic"` on scene materials (default `0`); `SCENE_VERSION` stays **1**.
 - **Entity tags (E3):** each entity may include `"tags": ["player", "wall", …]` (string list). Omitted or `[]` means no tags. `SCENE_VERSION` stays **1** (additive field). Shared roles: `player`, `goal`, `ground`, `wall`, `hazard` — prefer tags; legacy name exact match / `wall_*` / `hazard_*` prefixes still work for one version. `SceneEntity::has_tag`
-- **Reserved bags (M0 / 2.0):** optional `"components"` and `"extras"` JSON objects on the **scene root** and each **entity**. `SCENE_VERSION` stays **1**. Types: `SceneMap` / `Scene::{components,extras}` / `SceneEntity::{components,extras}`. **`"script": "file.rhai"`** in `extras` or `components` (path relative to the scene file). Scene-level scripts have no `self`; entity scripts bind `self` to the entity name. `Scene::script_attachments` / `map_script_path`.
+- **Reserved bags (M0 / 2.0):** optional `"components"` and `"extras"` JSON objects on the **scene root** and each **entity**. `SCENE_VERSION` stays **1**. Types: `SceneMap` / `Scene::{components,extras}` / `SceneEntity::{components,extras}`. **`"script": "file.juni"`** in `extras` or `components` (path relative to the scene file). Scene-level scripts get `0` from `self_entity()`; entity scripts get the owning entity's handle. `Scene::script_attachments` / `map_script_path`.
 - **Surge motion tags (E7):** on `hazard` entities, optional `orbit` / `slide_x` / `slide_z` select patrol style for the score-attack arenas (`games/surge`)
 - `Kerabit::load_scene(path)` / `Kerabit::scene(Scene)` / `Scene::into_kerabit(title)`
 - **Prefabs (M4):** `Prefab::load` / `save` / `from_json` / `to_json` / `instantiate(scene, offset)` — `.kerabit.prefab.json` (version + entities only; same entity wire format as scenes). Editor: File → Save Prefab / Instance Prefab. Samples under `games/reach/prefabs/`.
@@ -200,37 +200,46 @@ for (center, half) in &walls {
 | `ctx.spawn(Entity)` | Mid-run spawn with mesh upload + draw entry |
 | `ctx.apply_scene(&Scene)` | `clear_world` + camera/light/ambient/clear + spawn scene entities; reloads scripts (paths vs last scene dir) |
 | `ctx.load_scene(path)` | `Scene::load` then apply; script paths relative to the scene file |
-| `ctx.script_error()` | Last Rhai error this frame, if any |
+| `ctx.script_error()` | Current script problem (compile / link / trap), if any — sticky until the file reloads |
 
-### Rhai (2.0 — Frozen)
+### Juni (3.0 — Frozen)
 
-Prefer `fn init()` / `fn update()`. Bare top-level statements still re-run each frame (compat). Persist with `set` / `get` / `has`.
+Scripts are [Juni](https://github.com/AJpro774/Juno) — statically typed, Python-like indentation, compiled to WASM in-process by `kerabit-juni` and run in an embedded runtime (fuel-limited; a runaway loop traps instead of hanging the frame). `fn main() -> i32` runs once when the script loads; `fn frame(dt: f32) -> i32` runs every frame. Keep values in a `state:` block. Entities are opaque `i32` handles (`0` = none).
 
-```rhai
-fn init() { set("t", 0.0); }
-fn update() {
-    if key_pressed("Escape") { quit(); }
-    set("t", get("t") + dt());
-    rotate_y("cube", 1.1 * dt());
-}
+```juni
+state:
+    cube: i32 = 0
+    t: f32 = 0.0
+
+fn main() -> i32:
+    cube = entity("cube")
+    return 0
+
+fn frame(dt: f32) -> i32:
+    if key_pressed("Escape"):
+        quit()
+    t = t + dt
+    rotate_y(cube, 1.1 * dt)
+    return 0
 ```
 
-Scripts tick **after** the Rust `run` closure. Attach with scene/entity `"script"` in `extras` or `components` (path relative to the `.kerabit.json`), or `Kerabit::script(path)`. Entity scripts bind `self`. Examples: `hello_rhai`, `cargo run -p spark`. Site: [docs/scripting](https://kerabitengine.vercel.app/docs/scripting).
+Scripts tick **after** the Rust `run` closure. Attach with scene/entity `"script"` in `extras` or `components` (path relative to the `.kerabit.json`), or `Kerabit::script(path)`. Entity scripts get the owner via `self_entity()`. Examples: `hello_juni`, `cargo run -p spark`. Site: [docs/scripting](https://kerabitengine.vercel.app/docs/scripting). Source of truth: [`crates/kerabit-juni/juni/kerabit.juni`](crates/kerabit-juni/juni/kerabit.juni) (the prelude every script sees).
 
 | Function | Notes |
 |----------|-------|
-| `dt()` / `quit()` / `reload_scripts()` | Frame delta; quit; force reload |
-| `key_down` / `key_pressed` | Case-insensitive key names |
-| `mouse_pos` / `mouse_button_down` / `pressed` | `"left"` / `"right"` / `"middle"` |
-| `pos` / `get_pos` / `scale` / `enabled` / `has_tag` / `exists` / `names_with_tag` | World reads |
-| `rotate_x/y/z` / `translate` / `set_pos` / `set_scale` / `set_enabled` / `add_tag` / `remove_tag` | World writes |
-| `despawn` / `spawn_cube` / `spawn_cube_ex` / `spawn_plane` / `spawn_prefab` | Authorship |
-| `move_planar` / `register_box` | Physics helpers |
-| `play` / `play_at` / `spawn_particles` / `set_camera` | Juice / view |
-| `ui_text` / `ui_rect` | Overlay (ASCII text; normalized 0–1) |
-| `set` / `get` / `has` | Persistent store |
+| `dt() -> f32` / `quit()` / `reload_scripts()` / `log(text)` | Frame delta; quit; force reload; log line (also `print(...)`) |
+| `key_down(name) -> bool` / `key_pressed(name) -> bool` | Case-insensitive key names (`"W"`, `"Space"`, `"Escape"`, `"Left"`) |
+| `mouse_x()` / `mouse_y()` / `mouse_down(btn)` / `mouse_pressed(btn)` | `"left"` / `"right"` / `"middle"` |
+| `entity(name) -> i32` / `self_entity() -> i32` / `exists(e)` / `enabled(e)` | Handles; unknown names give `0` |
+| `pos_x/y/z(e)` / `scale_x/y/z(e)` / `has_tag(e, tag)` / `tag_count(tag)` / `tag_at(tag, i) -> i32` | World reads (snapshot taken before scripts run) |
+| `set_pos(e, x, y, z)` / `translate` / `rotate_x/y/z(e, rad)` / `set_scale` / `set_enabled(e, on)` / `add_tag(e, tag)` / `remove_tag` | World writes (applied after all scripts ran) |
+| `despawn(e)` / `spawn_cube(name, x, y, z, r, g, b) -> i32` / `spawn_cube_ex(name, x, y, z, sx, sy, sz, r, g, b) -> i32` / `spawn_plane(name, x, y, z, size, r, g, b) -> i32` / `spawn_prefab(path, x, y, z)` | Authorship; spawns return the handle the entity will have |
+| `move_planar(e, dx, dz)` / `register_box(e)` | Physics helpers |
+| `play(path)` / `play_at(path, x, y, z)` / `spawn_particles(x, y, z, count, r, g, b)` / `set_camera(ex, ey, ez, tx, ty, tz)` | Juice / view |
+| `ui_text(x, y, size, r, g, b, text)` / `ui_rect(x, y, w, h, r, g, b, a)` | Overlay (ASCII text; normalized 0–1) |
+| `dist_xz(ax, az, bx, bz)` / `dist_between(a, b)` / `near(a, b, radius)` | Prelude helpers written in Juni |
 
-Missing entity names are no-ops. Parse errors fail `load_scene`. Runtime errors set `ctx.script_error()`. Loaded files hot-reload on mtime change.
+Juni builtins `sqrt` / `sin` / `cos` / `abs` / `floor` / `ceil` / `min` / `max` / `clamp` / `lerp` / `pow` / `sign` / `fmod` / `smoothstep` / `rand` / `now` / `str_len` / `str_eq` / `print` work; Juno browser builtins (canvas, WebGPU, ECS) are rejected at load with a hint. Missing entities (`0`) are no-ops. Type errors fail `load_scene` with `file:line:col` diagnostics (`cargo run -p kerabit-juni --bin check_juni -- script.juni`). Traps set `ctx.script_error()` and pause that script. Loaded files hot-reload on mtime change (state resets).
 
 Prefer `apply_scene` for level transitions. Calling `Kerabit::run` again still works (EventLoop is reused) but tears down the window — use that only for full app restart.
 

@@ -68,7 +68,7 @@ pub struct EditorApp {
     play_selection_names: Vec<String>,
     /// Temp scene path used for dirty/unsaved Play (deleted when play ends).
     play_temp_path: Option<PathBuf>,
-    /// Bottom Rhai panel visibility.
+    /// Bottom Juni script panel visibility.
     script_open: bool,
     script_path: Option<PathBuf>,
     script_text: String,
@@ -331,8 +331,8 @@ impl EditorApp {
 
     fn open_script_dialog(&mut self) {
         let mut dialog = rfd::FileDialog::new()
-            .add_filter("Rhai script", &["rhai"])
-            .set_title("Open .rhai");
+            .add_filter("Juni script", &["juni"])
+            .set_title("Open .juni");
         if let Some(dir) = self.scene_dir() {
             dialog = dialog.set_directory(dir);
         }
@@ -353,7 +353,7 @@ impl EditorApp {
         match ScriptRuntime::check_source(&self.script_text) {
             Ok(()) => {
                 self.script_error = None;
-                self.status = "Script syntax OK".into();
+                self.status = "Script checks OK (types + host API)".into();
             }
             Err(err) => {
                 self.script_error = Some(err.to_string());
@@ -373,9 +373,9 @@ impl EditorApp {
 
     fn save_script_as(&mut self) {
         let mut dialog = rfd::FileDialog::new()
-            .add_filter("Rhai script", &["rhai"])
-            .set_file_name("scene.rhai")
-            .set_title("Save .rhai");
+            .add_filter("Juni script", &["juni"])
+            .set_file_name("scene.juni")
+            .set_title("Save .juni");
         if let Some(dir) = self.scene_dir() {
             dialog = dialog.set_directory(dir);
         }
@@ -415,7 +415,7 @@ impl EditorApp {
                 script_path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "scene.rhai".into())
+                    .unwrap_or_else(|| "scene.juni".into())
             });
         self.scene
             .extras
@@ -424,7 +424,21 @@ impl EditorApp {
     }
 
     fn new_scene_script(&mut self) {
-        self.script_text = "// Runs every Play frame.\nif key_pressed(\"Escape\") {\n    quit();\n}\n".into();
+        self.script_text = concat!(
+            "# `main` runs once when Play starts; `frame` runs every Play frame.\n",
+            "state:\n",
+            "    t: f32 = 0.0\n",
+            "\n",
+            "fn main() -> i32:\n",
+            "    return 0\n",
+            "\n",
+            "fn frame(dt: f32) -> i32:\n",
+            "    t = t + dt\n",
+            "    if key_pressed(\"Escape\"):\n",
+            "        quit()\n",
+            "    return 0\n",
+        )
+        .into();
         self.script_path = None;
         self.script_dirty = true;
         self.script_error = None;
@@ -801,7 +815,7 @@ impl EditorApp {
                 {
                     ui.close_menu();
                 }
-                if ui.button("Open .rhai…").clicked() {
+                if ui.button("Open .juni…").clicked() {
                     self.open_script_dialog();
                     ui.close_menu();
                 }
@@ -1229,7 +1243,7 @@ impl EditorApp {
             });
 
         ui.separator();
-        ui.label("Rhai script");
+        ui.label("Juni script");
         ui.horizontal(|ui| {
             dirty |= ui.text_edit_singleline(&mut script_rel).changed();
             if ui
@@ -1367,7 +1381,7 @@ impl EditorApp {
         dirty |= ui.color_edit_button_rgb(&mut light_color).changed();
 
         ui.separator();
-        ui.label("Scene Rhai script");
+        ui.label("Scene Juni script");
         let mut scene_script = map_script_path(&self.scene.extras).unwrap_or_default();
         ui.horizontal(|ui| {
             dirty |= ui.text_edit_singleline(&mut scene_script).changed();
@@ -1455,7 +1469,7 @@ impl EditorApp {
 
     fn ui_script_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.heading("Rhai");
+            ui.heading("Juni");
             let label = self
                 .script_path
                 .as_ref()

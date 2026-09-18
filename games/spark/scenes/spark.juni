@@ -1,0 +1,128 @@
+# Spark — Kerabit 3.0 script-first micro-game (Juni).
+# `main` runs once at load; `frame` every frame. Game values live in `state:`.
+# Phases: 0 = play, 1 = win, 2 = fail.
+
+state:
+    phase: i32 = 0
+    elapsed: f32 = 0.0
+    physics_ready: bool = false
+    start_x: f32 = -5.0
+    start_z: f32 = 0.0
+    player: i32 = 0
+    goal: i32 = 0
+    hazard_a: i32 = 0
+    hazard_b: i32 = 0
+
+fn main() -> i32:
+    player = entity("player")
+    goal = entity("goal")
+    hazard_a = entity("hazard_a")
+    hazard_b = entity("hazard_b")
+    return 0
+
+fn reset_player() -> i32:
+    set_pos(player, start_x, 0.5, start_z)
+    elapsed = 0.0
+    phase = 0
+    return 0
+
+fn ensure_physics() -> i32:
+    if physics_ready:
+        return 0
+    let n = tag_count("wall")
+    let i = 0
+    while i < n:
+        register_box(tag_at("wall", i))
+        i = i + 1
+    physics_ready = true
+    return 0
+
+fn retry_prompt(r: f32, g: f32, b: f32) -> i32:
+    ui_text(0.28, 0.48, 0.028, r, g, b, "Space - retry   Esc - quit")
+    return 0
+
+fn frame(dt: f32) -> i32:
+    if key_pressed("Escape"):
+        quit()
+        return 0
+
+    ensure_physics()
+
+    # Soft camera follow
+    let px = pos_x(player)
+    let pz = pos_z(player)
+    set_camera(px * 0.15, 11.0, 14.0, px * 0.2, 0.4, pz * 0.2)
+
+    if phase == 1:
+        ui_rect(0.0, 0.0, 1.0, 1.0, 0.08, 0.1, 0.08, 0.55)
+        ui_text(0.38, 0.36, 0.07, 0.91, 1.0, 0.29, "CLEAR")
+        retry_prompt(0.9, 0.9, 0.85)
+        if key_pressed("Space"):
+            reset_player()
+        return 0
+
+    if phase == 2:
+        ui_rect(0.0, 0.0, 1.0, 1.0, 0.18, 0.06, 0.05, 0.55)
+        ui_text(0.36, 0.36, 0.07, 1.0, 0.35, 0.35, "RETRY")
+        retry_prompt(0.9, 0.82, 0.76)
+        if key_pressed("Space") or key_pressed("R"):
+            reset_player()
+        return 0
+
+    # --- play ---
+    elapsed = elapsed + dt
+
+    let speed = 6.5
+    let dx = 0.0
+    let dz = 0.0
+    if key_down("W") or key_down("Up"):
+        dz = dz - 1.0
+    if key_down("S") or key_down("Down"):
+        dz = dz + 1.0
+    if key_down("A") or key_down("Left"):
+        dx = dx - 1.0
+    if key_down("D") or key_down("Right"):
+        dx = dx + 1.0
+
+    let len = sqrt(dx * dx + dz * dz)
+    if len > 0.001:
+        dx = dx / len * speed * dt
+        dz = dz / len * speed * dt
+        move_planar(player, dx, dz)
+
+    # Spin hazards for juice
+    rotate_y(hazard_a, 1.4 * dt)
+    rotate_y(hazard_b, -1.1 * dt)
+
+    px = pos_x(player)
+    let py = pos_y(player)
+    pz = pos_z(player)
+
+    # Fell off platform?
+    if py < -2.0:
+        phase = 2
+        spawn_particles(px, py, pz, 28, 1.0, 0.4, 0.2)
+        return 0
+
+    # Hazard touch (XZ radius)
+    let hazards = tag_count("hazard")
+    let i = 0
+    while i < hazards:
+        let h = tag_at("hazard", i)
+        if dist_xz(px, pz, pos_x(h), pos_z(h)) < 1.05:
+            phase = 2
+            spawn_particles(px, 0.8, pz, 32, 1.0, 0.3, 0.15)
+            return 0
+        i = i + 1
+
+    # Goal
+    if dist_between(player, goal) < 1.15:
+        phase = 1
+        spawn_particles(pos_x(goal), 1.0, pos_z(goal), 40, 0.3, 0.9, 1.0)
+        return 0
+
+    # HUD (ASCII only — overlay atlas)
+    ui_text(0.03, 0.03, 0.028, 0.91, 1.0, 0.29, "SPARK")
+    ui_text(0.03, 0.07, 0.022, 0.85, 0.82, 0.75, "WASD move  reach cyan  avoid orange")
+    ui_text(0.03, 0.11, 0.02, 0.65, 0.62, 0.55, "Space retries after win/fail")
+    return 0

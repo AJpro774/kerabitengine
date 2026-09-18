@@ -15,7 +15,7 @@
     "color": [0.95, 0.98, 1.0]
   },
   "extras": {
-    "script": "spark.rhai"
+    "script": "spark.juni"
   },
   "entities": [
     {

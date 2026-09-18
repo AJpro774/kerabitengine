@@ -4,7 +4,7 @@ Lean native Rust 3D engine: **simple for the game author, deep in the engine**.
 
 **Site:** [kerabitengine.vercel.app](https://kerabitengine.vercel.app) · **Repo:** [github.com/AJpro774/kerabitengine](https://github.com/AJpro774/kerabitengine)
 
-> **Status:** **Kerabit 2.0** (`2.0.0`) — Scripting Summit. Flagship: **Reach**. Script-first proof: **Spark**. Also **Surge** + **Showcase**. Roadmap: [ROADMAP.md](ROADMAP.md).
+> **Status:** **Kerabit 3.0** (`3.0.0`) — Juni scripting + UE5-class render tier. Flagship: **Reach**. Script-first proof: **Spark**. FPS slice: **Strike**. Also **Surge** + **Showcase**. Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Install
 
@@ -18,6 +18,7 @@ Clone-and-cargo for authors. Install is unchanged:
 git clone https://github.com/AJpro774/kerabitengine.git
 cd kerabitengine
 cargo run -p spark
+cargo run -p strike
 cargo run -p reach
 cargo run -p surge
 cargo run -p showcase
@@ -26,11 +27,22 @@ cargo run -p kerabit-editor
 
 Frozen vs experimental public APIs: [API.md](API.md). Release notes: [CHANGELOG.md](CHANGELOG.md).
 
+## Kerabit MCP
+
+Agents can drive the repo via a local stdio MCP (docs search, validate scenes / check Juni scripts, scaffold, run/stop packages):
+
+```bash
+cd tools/kerabit-mcp && npm install && npm run build
+```
+
+Cursor wiring and tool list: [tools/kerabit-mcp/README.md](tools/kerabit-mcp/README.md).
+
 ## Goals
 
 - Tiny game-facing API (builder + `run` closure; no wgpu in user code)
 - Real wgpu renderer, scene graph, assets, physics/audio, `.kerabit.json` scenes
-- Rhai scripting rich enough to ship small games mostly in `.rhai` (2.0)
+- Juni scripting (statically typed, compiled to WASM in-process) rich enough to ship small games mostly in `.juni` (3.0)
+- UE5-class rendering on a tiny footprint: clustered lights, cascaded shadows, SSAO, IBL, SSR, TAA, LOD (3.0)
 - Install/build footprint far under a 20GB budget (target: &lt; 1GB toolchain + debug build)
 
 ## Play Reach (release)
@@ -73,7 +85,7 @@ Controls: **Space** start / next · **WASD** move · **R** retry · **Escape** q
 |-------|-----|
 | Getting Started (≤30 min stranger path) | [docs/getting-started](https://kerabitengine.vercel.app/docs/getting-started) |
 | API tour | [docs/api-tour](https://kerabitengine.vercel.app/docs/api-tour) |
-| Rhai scripting (2.0) | [docs/scripting](https://kerabitengine.vercel.app/docs/scripting) |
+| Juni scripting (3.0) | [docs/scripting](https://kerabitengine.vercel.app/docs/scripting) |
 | Editor guide | [docs/editor](https://kerabitengine.vercel.app/docs/editor) |
 
 ## Quick start (engine / authors)
@@ -81,7 +93,9 @@ Controls: **Space** start / next · **WASD** move · **R** retry · **Escape** q
 ```bash
 # Requires a recent stable Rust toolchain (pinned in rust-toolchain.toml)
 cargo run -p kerabit --example hello
-cargo run -p kerabit --example hello_rhai
+cargo run -p kerabit --example hello_juni
+cargo run -p spark
+cargo run -p strike
 cargo run -p reach
 cargo run -p surge
 cargo run -p showcase
@@ -96,16 +110,17 @@ cargo run -p kerabit --example playground
 cargo run -p kerabit-editor
 ```
 
-Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select (**Shift+click** multi-select), **W/E/R** for move/rotate/scale gizmos, configurable snap (persisted in `~/.kerabit/editor.json`), **Place cube** then click the ground plane. **Ctrl+Z / Ctrl+Shift+Z** undo/redo; Edit → Align X/Y/Z; File → Save Prefab / Instance Prefab (`.kerabit.prefab.json`, samples in `games/reach/prefabs/`). File → Save writes `.kerabit.json`. **Script** menu opens a Rhai panel (`extras.script` on the scene or an entity). **Play** runs the scene (and its scripts) in a child window (dirty scenes use a temp snapshot; Esc returns with selection intact). Editor is a **dev tool** — not bundled inside the shipped Reach.app.
+Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select (**Shift+click** multi-select), **W/E/R** for move/rotate/scale gizmos, configurable snap (persisted in `~/.kerabit/editor.json`), **Place cube** then click the ground plane. **Ctrl+Z / Ctrl+Shift+Z** undo/redo; Edit → Align X/Y/Z; File → Save Prefab / Instance Prefab (`.kerabit.prefab.json`, samples in `games/reach/prefabs/`). File → Save writes `.kerabit.json`. **Script** menu opens a Juni panel (`extras.script` on the scene or an entity; **Check** type-checks against the host API). **Play** runs the scene (and its scripts) in a child window (dirty scenes use a temp snapshot; Esc returns with selection intact). Editor is a **dev tool** — not bundled inside the shipped Reach.app.
 
-### Rhai (2.0)
+### Juni scripting (3.0)
 
 ```bash
-cargo run -p kerabit --example hello_rhai
+cargo run -p kerabit --example hello_juni
 cargo run -p spark
+cargo run -p kerabit-juni --bin check_juni -- games/spark/scenes/spark.juni
 ```
 
-Attach a `.rhai` file with scene/entity `extras.script` (path relative to the `.kerabit.json`). Prefer `fn init()` / `fn update()`; persist with `set` / `get` / `has`. Scripts run every frame after the Rust `run` closure. **Frozen for 2.0** host API covers world read/write, spawn/despawn, `move_planar`, audio, particles, camera, UI overlay, mouse, and hot-reload — see [API.md](API.md) and [docs/scripting](https://kerabitengine.vercel.app/docs/scripting). **Spark** is the script-first proof game.
+Attach a `.juni` file with scene/entity `extras.script` (path relative to the `.kerabit.json`). [Juni](https://github.com/AJpro774/Juno) is statically typed with Python-like indentation; Kerabit compiles it to WASM in-process and runs it in an embedded, fuel-limited runtime — type errors show `file:line:col` before Play, and a runaway loop traps instead of hanging a frame. `fn main() -> i32` runs once at load, `fn frame(dt: f32) -> i32` every frame; keep values in a `state:` block; entities are `i32` handles from `entity("name")`. The **Frozen for 3.0** host API covers world read/write, spawn/despawn, `move_planar`, audio, particles, camera, UI overlay, mouse, and hot-reload — see [API.md](API.md), [docs/scripting](https://kerabitengine.vercel.app/docs/scripting), and the prelude [`crates/kerabit-juni/juni/kerabit.juni`](crates/kerabit-juni/juni/kerabit.juni). **Spark** is the script-first proof game.
 
 ### Reach (flagship)
 
@@ -130,6 +145,14 @@ cargo run -p showcase
 ```
 
 Non-game visual proof of Summit render: PBR-lite room, multi-light, bloom, particles, orbiting camera. Escape quits.
+
+### Strike (FPS slice)
+
+```bash
+cargo run -p strike
+```
+
+Compact indoor arena: **WASD** move, **mouse** look (click the window), **left-click** hitscan, **Space** jump / start, **R** retry, **Esc** quit. Hostile dummies patrol, chase on line of sight, and return fire (2 hits each; you have 5 HP). Sketchfab CC-BY props live in `games/strike/assets/` (see `ATTRIBUTION.md`).
 
 ### Mini game (legacy slice)
 
@@ -180,8 +203,9 @@ fn main() {
 | Example | Command |
 |---------|---------|
 | Hello cube | `cargo run -p kerabit --example hello` |
-| Hello Rhai (2.0) | `cargo run -p kerabit --example hello_rhai` |
+| Hello Juni (3.0) | `cargo run -p kerabit --example hello_juni` |
 | **Spark** (script-first) | `cargo run -p spark` |
+| **Strike** (FPS arena) | `cargo run -p strike` |
 | **Reach** (flagship) | `cargo run -p reach` |
 | **Surge** (score-attack) | `cargo run -p surge` |
 | **Showcase** (trailer) | `cargo run -p showcase` |
@@ -196,10 +220,10 @@ fn main() {
 
 | Doc | Purpose |
 |-----|---------|
-| [Site docs](https://kerabitengine.vercel.app/docs/) | Getting Started, API tour, Rhai, Editor |
-| [ROADMAP.md](ROADMAP.md) | Summit M0–M9 + Scripting Summit M10–M15 (2.0) |
+| [Site docs](https://kerabitengine.vercel.app/docs/) | Getting Started, API tour, Juni scripting, Editor |
+| [ROADMAP.md](ROADMAP.md) | Summit M0–M9, Scripting Summit M10–M15 (2.0), Juni + Render tier M16–M24 (3.0) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, frame loop, GPU model, phase status |
-| [API.md](API.md) | Public surface contract + 1.0 freeze + Frozen for 2.0 Rhai |
+| [API.md](API.md) | Public surface contract + 1.0 freeze + Frozen for 3.0 Juni host |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Ownership, editor workflow, accept gates |
 

@@ -5,6 +5,13 @@ All notable changes to Kerabit are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Kerabit MCP** (`tools/kerabit-mcp`) — Node/TS stdio MCP for docs, scene/script IO + validate, `check_rhai`, scaffold, and `cargo run` / stop. Helper bin: `cargo run -p kerabit-script --bin check_rhai`.
+- **Strike** — `cargo run -p strike`; first-person arena with hitscan, chasing AI dummies, and Sketchfab CC-BY props (`games/strike`).
+
 ## [2.0.0] — 2026-08-28
 
 **Scripting Summit** — rich Rhai host API so authors can ship small games mostly in `.rhai`. Frozen 1.0 Rust APIs unchanged.

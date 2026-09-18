@@ -1,0 +1,26 @@
+[package]
+name = "kerabit-juni"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Juni scripting runtime for Kerabit (WASM host API over world + input)"
+rust-version.workspace = true
+
+[dependencies]
+# Juni compiler (extern host imports + prelude API landed in Juno v13.0.0).
+# Local development against ~/Juno: see CONTRIBUTING.md (`[patch]` in .cargo/config.toml).
+juni-driver = { git = "https://github.com/AJpro774/Juno.git", tag = "v13.0.0" }
+juni-check = { git = "https://github.com/AJpro774/Juno.git", tag = "v13.0.0" }
+# Cranelift JIT; scripts are compiled once at load / hot-reload and run per frame.
+wasmtime = { version = "48", default-features = false, features = ["cranelift", "runtime", "std"] }
+kerabit-world = { workspace = true }
+kerabit-input = { workspace = true }
+kerabit-math = { workspace = true }
+thiserror = { workspace = true }
+
+[[bin]]
+name = "check_juni"
+path = "src/bin/check_juni.rs"
+
+[lints]
+workspace = true

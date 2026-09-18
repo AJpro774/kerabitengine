@@ -9,7 +9,7 @@ use kerabit_input::InputState;
 use kerabit_math::Vec3;
 use kerabit_physics::{Aabb, PhysicsWorld};
 use kerabit_render::{clamp_lights, Camera, GpuState, Light, ParticleBurst};
-use kerabit_script::{PrimitiveKind, ScriptEffects, ScriptRuntime};
+use kerabit_juni::{PrimitiveKind, ScriptEffects, ScriptRuntime};
 use kerabit_world::{EntityId, World};
 
 use crate::engine::{spawn_entities, Renderable};
@@ -145,13 +145,13 @@ impl Context<'_> {
         *self.quit = true;
     }
 
-    /// Last Rhai error from this frame's script tick, if any.
+    /// Last script error (compile, link, or trap) from this frame.s tick, if any.
     #[inline]
     pub fn script_error(&self) -> Option<&str> {
         self.scripts.last_error()
     }
 
-    /// Run loaded Rhai scripts against this frame (called automatically after the `run` closure).
+    /// Run loaded Juni scripts against this frame (called automatically after the `run` closure).
     pub(crate) fn tick_scripts(&mut self) {
         let effects = self
             .scripts
