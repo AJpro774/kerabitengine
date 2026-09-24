@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "clear_color": [0.08, 0.09, 0.12],
+  "ambient": [0.15, 0.16, 0.18],
+  "camera": {
+    "fov_y": 60.0,
+    "eye": [5.0, 3.0, 7.0],
+    "target": [0.0, 0.0, 0.0],
+    "near": 0.1,
+    "far": 100.0
+  },
+  "light": {
+    "direction": [-0.35, -1.0, -0.25],
+    "intensity": 1.2,
+    "color": [1.0, 1.0, 1.0]
+  },
+  "extras": { "script": "entry.juni" },
+  "entities": [
+    {
+      "name": "cube",
+      "mesh": { "type": "cube" },
+      "material": { "color": [0.91, 1.0, 0.29], "roughness": 0.35 },
+      "at": [0.0, 0.5, 0.0]
+    },
+    {
+      "name": "ground",
+      "mesh": { "type": "plane", "size": 40.0 },
+      "material": { "color": [0.5, 0.5, 0.5], "roughness": 0.9 },
+      "at": [0.0, 0.0, 0.0]
+    }
+  ]
+}

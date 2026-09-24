@@ -16,6 +16,8 @@ mod entity;
 mod input_map;
 mod material;
 mod mesh;
+mod mods;
+mod paths;
 mod scene;
 mod ui;
 
@@ -63,7 +65,7 @@ pub mod script {
     pub use kerabit_juni::*;
 }
 
-pub use assets::{load_gltf, Texture};
+pub use assets::{load_fbx, load_gltf, Texture};
 pub use context::Context;
 pub use engine::Kerabit;
 pub use entity::Entity;
@@ -84,6 +86,8 @@ pub use kerabit_juni::{ScriptError, ScriptRuntime};
 pub use kerabit_world::{EntityId, Transform, World, LAYER_DEFAULT};
 pub use material::Material;
 pub use mesh::Mesh;
+pub use mods::{user_mods_dir, ModIndex, ModManifest, ModPack, MOD_MANIFEST};
+pub use paths::{packaged_data_root, user_data_dir};
 pub use scene::{
     map_script_path, Prefab, Scene, SceneCamera, SceneEntity, SceneEnvironment, SceneError,
     SceneLight, SceneLod, SceneMap, SceneMaterial, SceneMesh, SCENE_VERSION,
@@ -93,10 +97,10 @@ pub use ui::Ui;
 /// Convenience re-exports for game code.
 pub mod prelude {
     pub use crate::{
-        load_gltf, translation_clip, vec3, Aabb, AnimChannel, AnimationClip, AnimationPlayer,
+        load_fbx, load_gltf, translation_clip, vec3, Aabb, AnimChannel, AnimationClip, AnimationPlayer,
         AssetError, AudioEngine, AudioError, AudioListener, BodyId, BodyShape, Camera,
         CharacterController, CharacterMove, Color, Context, Deg, DynamicBody, Entity, EntityId,
-        InputState, Kerabit, Key, Light, LightKind, Material, Mat4, Mesh, MixBus, MouseButton,
+        InputState, Kerabit, Key, Light, LightKind,         Material, Mat4, Mesh, MixBus, ModIndex, ModManifest, MouseButton,
         ParticleBurst, PhysicsWorld, Prefab, Quat, QuatKey, Rad, Scene, SceneError, ScriptError,
         ScriptRuntime, SoundId, Texture, Transform, Ui, Vec2, Vec3, Vec3Key, World, LAYER_DEFAULT,
         MAX_LIGHTS,

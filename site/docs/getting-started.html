@@ -24,9 +24,11 @@
       <a class="nav-brand" href="/">Kerabit</a>
       <nav class="nav-links">
         <a href="/docs/">Docs</a>
-        <a href="/docs/api-tour">API tour</a>
+        <a href="/docs/getting-started">Start</a>
+        <a href="/docs/api-tour">API</a>
         <a href="/docs/scripting">Scripting</a>
         <a href="/docs/editor">Editor</a>
+        <a href="/docs/modding">Mods</a>
         <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
       </nav>
     </header>
@@ -40,7 +42,9 @@
         Stranger path: this site → clone → hello cube →
         <code>hello_juni</code> / <strong>Spark</strong> → editor. Budget about
         <strong>30 minutes</strong> on a machine with a working GPU driver
-        (Metal / Vulkan / DX12 via wgpu).
+        (Metal / Vulkan / DX12 via wgpu). The engine and editor run from source
+        on <strong>macOS, Windows, and Linux</strong>. Reach
+        <strong>player</strong> zips are macOS and Windows only.
       </p>
 
       <ol class="docs-steps">
@@ -53,8 +57,14 @@
             <code>cargo</code> in the repo.
           </p>
           <pre class="code"><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-# Windows: use the rustup-init.exe installer from rustup.rs
+# Windows: rustup-init.exe from rustup.rs + VS Build Tools (C++/MSVC)
 rustc --version</code></pre>
+          <p>
+            Moving a Mac checkout onto a PC:
+            <a href="https://github.com/AJpro774/kerabitengine/blob/main/WINDOWS.md">WINDOWS.md</a>
+            — same cargo commands; copy <code>~/.kerabit</code> to
+            <code>%USERPROFILE%\.kerabit</code>.
+          </p>
         </li>
         <li>
           <h2>2. Clone the engine</h2>
@@ -88,6 +98,7 @@ cargo run -p spark</code></pre>
           <h2>5. Open the editor</h2>
           <pre class="code"><code>cargo run -p kerabit-editor</code></pre>
           <p>
+            Same command on macOS, Windows, or Linux — there is no editor zip.
             File → Open a level under <code>games/reach/levels/</code>. Orbit with
             right mouse, select an entity, press <kbd>W</kbd> for the move gizmo.
             See the <a href="/docs/editor">Editor guide</a> for Play, undo, Script
@@ -100,8 +111,8 @@ cargo run -p spark</code></pre>
 cargo run -p surge
 cargo run -p showcase</code></pre>
           <p>
-            Players who only want Reach can grab a zip from
-            <a href="/#download">Downloads</a> (macOS + Windows when published).
+            Or skip cargo and grab a <strong>player</strong> zip from
+            <a href="/#download">Downloads</a> — macOS and Windows only.
           </p>
         </li>
       </ol>

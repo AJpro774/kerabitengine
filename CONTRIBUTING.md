@@ -21,7 +21,7 @@ Author and edit playable scenes in **`kerabit-editor`** (`cargo run -p kerabit-e
 - File → Save writes `.kerabit.json`. Prefer **Play** in the editor to smoke a scene when available.
 - **Juni (3.0)** — Host API + Script panel (Check / Reload); `extras.script` on the scene or an entity. `cargo run -p spark` · `cargo run -p kerabit --example hello_juni`. Type-check a script: `cargo run -p kerabit-juni --bin check_juni -- path.juni`. The host table lives in `crates/kerabit-juni/juni/kerabit.juni`; adding a function means: extern line there → `host.rs` `func_wrap` → API.md row → MCP `docs.ts` table.
 - **MCP** — Agent tooling in `tools/kerabit-mcp` (stdio). See [tools/kerabit-mcp/README.md](tools/kerabit-mcp/README.md).
-- **Reach** — registered in `games/reach/src/main.rs` (`LEVEL_FILES` + `CHAPTERS`). Tags: `player`, `goal`, `ground`, `wall`, `hazard`. Keep unit-cube players (`half = 0.5`) and leave dodge gaps ≥ **1.0**. Best times live in `~/.kerabit/reach_progress.txt` (Windows: `%LOCALAPPDATA%/Kerabit/`).
+- **Reach** — registered in `games/reach/src/main.rs` (`LEVEL_FILES` + `CHAPTERS`). Tags: `player`, `goal`, `ground`, `wall`, `hazard`. Keep unit-cube players (`half = 0.5`) and leave dodge gaps ≥ **1.0**. Best times live in `~/.kerabit/reach_progress.txt` (Windows: `%USERPROFILE%\.kerabit\`). Full Windows move: [WINDOWS.md](WINDOWS.md).
 - **Surge** — registered in `games/surge/src/main.rs`. Same role tags (no `goal`); hazard motion tags: `orbit`, `slide_x`, `slide_z` (experimental — see API.md).
 
 ## Packaging (Reach)
@@ -36,13 +36,13 @@ pwsh ./scripts/package-reach-windows.ps1
 pwsh ./scripts/package-reach-windows.ps1 -SkipBuild
 ```
 
-Accept: unzip `dist/Reach-macos.zip` on a Mac and double-click **Reach.app**; unzip `Reach-windows.zip` and run `reach.exe` beside `levels/` + `assets/`. Icon (macOS) from `games/reach/packaging/AppIcon.png`. Do not commit `dist/`.
+Accept: unzip `dist/Reach-macos.zip` on a Mac and double-click **Reach.app**; unzip `Reach-windows.zip` and run `reach.exe` beside `levels/` + `assets/`. All Windows products: `pwsh ./scripts/package-windows.ps1`. Icon (macOS) from `games/reach/packaging/AppIcon.png`. Do not commit `dist/`.
 
 **CI artifacts:** `.github/workflows/package-reach.yml` is manual (`workflow_dispatch`). It builds release Reach on `macos-latest` and `windows-latest` and uploads `Reach-macos` / `Reach-windows` artifacts. Attach those zips to a GitHub Release when cutting a player build; the site download section points at Releases + the packaging scripts.
 
 ## Site docs
 
-Static pages under `site/docs/` (Getting Started, API tour, Juni scripting, Editor). Deploy from repo root so `vercel.json` `cleanUrls` apply (`kerabitengine.vercel.app`). Keep the stranger path: rustup → clone → `cargo run -p kerabit --example hello` → `hello_juni` / `spark` → `cargo run -p kerabit-editor`.
+Static pages under `site/docs/` (Getting Started, API tour, Juni scripting, Editor, Community mods). Deploy from repo root so `vercel.json` `cleanUrls` apply (`kerabitengine.vercel.app`). Keep the stranger path: rustup → clone → `cargo run -p kerabit --example hello` → `hello_juni` / `spark` → `cargo run -p kerabit-editor`. Engine and editor from source: macOS / Windows / Linux. Reach player zips: macOS + Windows.
 
 ## Working on the Juni compiler
 

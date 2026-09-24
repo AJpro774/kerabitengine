@@ -148,6 +148,7 @@ pub enum SceneMesh {
     Plane { size: f32 },
     Obj { path: PathBuf },
     Gltf { path: PathBuf },
+    Fbx { path: PathBuf },
 }
 
 /// Material tint / roughness / metallic / optional albedo texture path.
@@ -457,6 +458,10 @@ impl SceneMesh {
                 let (mesh, material) = crate::load_gltf(path)?;
                 Ok((mesh, Some(material)))
             }
+            SceneMesh::Fbx { path } => {
+                let (mesh, material) = crate::load_fbx(path)?;
+                Ok((mesh, Some(material)))
+            }
         }
     }
 }
@@ -685,6 +690,7 @@ enum MeshFile {
     Plane { size: f32 },
     Obj { path: String },
     Gltf { path: String },
+    Fbx { path: String },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -846,6 +852,9 @@ impl MeshFile {
             SceneMesh::Gltf { path } => MeshFile::Gltf {
                 path: path.to_string_lossy().into_owned(),
             },
+            SceneMesh::Fbx { path } => MeshFile::Fbx {
+                path: path.to_string_lossy().into_owned(),
+            },
         }
     }
 
@@ -857,6 +866,9 @@ impl MeshFile {
                 path: PathBuf::from(path),
             },
             MeshFile::Gltf { path } => SceneMesh::Gltf {
+                path: PathBuf::from(path),
+            },
+            MeshFile::Fbx { path } => SceneMesh::Fbx {
                 path: PathBuf::from(path),
             },
         }
@@ -901,7 +913,7 @@ fn resolve_asset_path(base: Option<&Path>, path: &Path) -> PathBuf {
 
 fn rebase_mesh(mesh: &mut SceneMesh, base: Option<&Path>) {
     match mesh {
-        SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+        SceneMesh::Obj { path } | SceneMesh::Gltf { path } | SceneMesh::Fbx { path } => {
             *path = resolve_asset_path(base, path);
         }
         SceneMesh::Cube | SceneMesh::Plane { .. } => {}
@@ -920,7 +932,7 @@ fn relativize_path(dir: &Path, path: &Path) -> PathBuf {
 
 fn relativize_mesh(mesh: &mut SceneMesh, dir: &Path) {
     match mesh {
-        SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+        SceneMesh::Obj { path } | SceneMesh::Gltf { path } | SceneMesh::Fbx { path } => {
             *path = relativize_path(dir, path);
         }
         SceneMesh::Cube | SceneMesh::Plane { .. } => {}

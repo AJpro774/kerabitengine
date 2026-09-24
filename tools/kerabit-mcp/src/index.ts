@@ -26,6 +26,7 @@ import {
   writeText,
 } from "./root.js";
 import { checkJuni } from "./scripts.js";
+import { catalog, listMods, scaffoldMod } from "./mods.js";
 import {
   listScenes,
   listScripts,
@@ -153,6 +154,33 @@ server.tool(
     try {
       const result = checkJuni(root, rel);
       return text(result.ok ? result.output : `FAIL\n${result.output}`);
+    } catch (err) {
+      return text(`error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+);
+
+server.tool(
+  "kerabit_list_mods",
+  "List discovered Kerabit mods (./mods, ~/.kerabit/mods, KERABIT_MODS) plus the community catalog",
+  {},
+  async () =>
+    json({
+      installed: listMods(root),
+      catalog: catalog(root),
+    })
+);
+
+server.tool(
+  "kerabit_scaffold_mod",
+  "Create a community mod pack under mods/<id> with a spinning-cube scene and Juni script",
+  {
+    id: z.string().describe("kebab-case pack id, e.g. cool-maps"),
+    name: z.string().describe("Display name"),
+  },
+  async ({ id, name }) => {
+    try {
+      return json({ ok: true, ...scaffoldMod(root, id, name) });
     } catch (err) {
       return text(`error: ${err instanceof Error ? err.message : String(err)}`);
     }

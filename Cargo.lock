@@ -2016,6 +2016,7 @@ dependencies = [
  "kerabit-render",
  "thiserror 2.0.19",
  "tobj",
+ "ufbx",
 ]
 
 [[package]]
@@ -3890,6 +3891,15 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ufbx"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40e2ed9a04df77d43de59675bcc4e667702589df0fd77c80a99061049142397a"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

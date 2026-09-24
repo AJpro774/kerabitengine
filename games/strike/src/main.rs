@@ -71,7 +71,8 @@ struct Game {
 }
 
 fn scene_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scenes/arena.kerabit.json")
+    kerabit::packaged_data_root("scenes", env!("CARGO_MANIFEST_DIR"))
+        .join("scenes/arena.kerabit.json")
 }
 
 fn look_forward(yaw: f32, pitch: f32) -> Vec3 {

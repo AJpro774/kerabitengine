@@ -41,7 +41,7 @@ jobs:
           toolchain: stable
       - name: Package Reach folder
         shell: pwsh
-        run: ./scripts/package-reach-windows.ps1
+        run: ./scripts/package-windows.ps1 -Only reach
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

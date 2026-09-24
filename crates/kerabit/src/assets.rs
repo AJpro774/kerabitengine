@@ -1,4 +1,4 @@
-//! Public asset helpers (OBJ / PNG / glTF lite).
+//! Public asset helpers (OBJ / PNG / glTF lite / FBX).
 
 use std::path::Path;
 
@@ -19,4 +19,16 @@ pub fn load_gltf(path: impl AsRef<Path>) -> Result<(Mesh, Material), AssetError>
         material = material.with_texture(tex);
     }
     Ok((Mesh::from_render(loaded.mesh), material))
+}
+
+/// Load the first mesh + diffuse / base-color factor from an FBX file.
+///
+/// ASCII and binary FBX. No animation or skins. Embedded textures are ignored;
+/// assign a PNG on the entity if you need albedo.
+pub fn load_fbx(path: impl AsRef<Path>) -> Result<(Mesh, Material), AssetError> {
+    let loaded = kerabit_assets::load_fbx(path)?;
+    Ok((
+        Mesh::from_render(loaded.mesh),
+        Material::color(loaded.albedo),
+    ))
 }

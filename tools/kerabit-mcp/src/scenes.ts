@@ -7,7 +7,8 @@ type SceneMesh =
   | { type: "cube" }
   | { type: "plane"; size?: number }
   | { type: "obj"; path: string }
-  | { type: "gltf"; path: string };
+  | { type: "gltf"; path: string }
+  | { type: "fbx"; path: string };
 
 type SceneEntity = {
   name: string;
@@ -108,7 +109,7 @@ export function validateScene(root: string, rel: string): string[] {
       }
     }
     const mesh = e.mesh;
-    if (mesh && (mesh.type === "obj" || mesh.type === "gltf")) {
+    if (mesh && (mesh.type === "obj" || mesh.type === "gltf" || mesh.type === "fbx")) {
       if (!assetExists(root, sceneDir, mesh.path)) {
         errors.push(`entity "${e.name}": missing mesh asset ${mesh.path}`);
       }

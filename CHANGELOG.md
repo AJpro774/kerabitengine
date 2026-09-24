@@ -5,6 +5,13 @@ All notable changes to Kerabit are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Community mods** — folder packs with `mod.kerabit.json`, discovered from `./mods`, `~/.kerabit/mods`, and `KERABIT_MODS`. Enable list in `~/.kerabit/mods.json`. `ModIndex` (`discover`, `extra_scenes`, `resolve`, `scaffold`). Editor Mods window (Play / Open). Sample `mods/hello-cube`. Git catalog `community/catalog.json`. MCP `kerabit_list_mods` / `kerabit_scaffold_mod`.
+- **Windows parity** — one user-data dir (`user_data_dir`: `~/.kerabit` / `%USERPROFILE%\.kerabit`, `KERABIT_HOME`). Games resolve data next to the `.exe` (`packaged_data_root`). `scripts/package-windows.ps1` + `package-windows.yml` zip Reach, Surge, Spark, Strike, Showcase, and the editor. MCP `kerabit_stop` uses `taskkill` on Windows. Move guide: [WINDOWS.md](WINDOWS.md).
+
 ## [3.0.0] — 2026-09-18
 
 **Juni + UE5-class render tier.** Scripting moves from Rhai to compiled [Juni](https://github.com/AJpro774/Juno) (**breaking**: `.rhai` files no longer load), and the renderer gains the pillars of a modern real-time pipeline on the same tiny footprint. Frozen 1.0 Rust APIs are unchanged; new surfaces are additive.

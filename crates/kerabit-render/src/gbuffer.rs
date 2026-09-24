@@ -41,6 +41,10 @@ pub struct GBuffer {
     hiz_bgl: wgpu::BindGroupLayout,
     hiz_bind_groups: Vec<wgpu::BindGroup>,
     hiz_params: [wgpu::Buffer; 2],
+    /// Unused by the level-0 (depth copy) pass; kept so the bind group is valid
+    /// on 1×1 targets that can only have a single mip.
+    _hiz_dummy: wgpu::Texture,
+    hiz_dummy_view: wgpu::TextureView,
 }
 
 impl GBuffer {
@@ -180,6 +184,11 @@ impl GBuffer {
             uniform_buffer(device, "hiz-params-copy", &HizParams { mode: [1.0, 0.0, 0.0, 0.0] }),
             uniform_buffer(device, "hiz-params-reduce", &HizParams { mode: [0.0; 4] }),
         ];
+        let hiz_dummy = dummy_hiz_texture(device);
+        let hiz_dummy_view = hiz_dummy.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("hiz-dummy-src"),
+            ..Default::default()
+        });
 
         let mut this = Self {
             width: 0,
@@ -198,6 +207,8 @@ impl GBuffer {
             hiz_bgl,
             hiz_bind_groups: Vec::new(),
             hiz_params,
+            _hiz_dummy: hiz_dummy,
+            hiz_dummy_view,
         };
         this.resize(device, width, height);
         this
@@ -230,7 +241,7 @@ impl GBuffer {
         let depth = make("gbuffer-depth", DEPTH_FORMAT, 1);
         let normal = make("gbuffer-normal-rough", NORMAL_FORMAT, 1);
         let velocity = make("gbuffer-velocity", VELOCITY_FORMAT, 1);
-        let hiz_mips = HIZ_MIPS.min(width.max(height).ilog2()).max(2);
+        let hiz_mips = hiz_mip_count(width, height);
         let hiz = make("hiz", HIZ_FORMAT, hiz_mips);
 
         self.depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
@@ -248,13 +259,12 @@ impl GBuffer {
             })
             .collect();
 
-        // Level 0 reads scene depth (its hiz slot must not alias the mip being
-        // written, so bind the last mip); level i reads level i-1.
+        // Level 0 copies scene depth and never samples `src_hiz`; bind a dummy
+        // so we don't alias the mip being written (and so 1×1 / 1-mip works).
         let mut groups = Vec::with_capacity(hiz_mips as usize);
-        let last = hiz_mips as usize - 1;
         for level in 0..hiz_mips as usize {
             let src_hiz = if level == 0 {
-                &self.hiz_mip_views[last.max(1)]
+                &self.hiz_dummy_view
             } else {
                 &self.hiz_mip_views[level - 1]
             };
@@ -388,6 +398,29 @@ pub(crate) fn uniform_buffer<T: bytemuck::Pod>(device: &wgpu::Device, label: &st
     })
 }
 
+/// Legal Hi-Z mip count for a `width`×`height` target (wgpu: max is `1 + log2(max_dim)`).
+fn hiz_mip_count(width: u32, height: u32) -> u32 {
+    let max_dim = width.max(height).max(1);
+    HIZ_MIPS.min(max_dim.ilog2() + 1).max(1)
+}
+
+fn dummy_hiz_texture(device: &wgpu::Device) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("hiz-dummy-src"),
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: HIZ_FORMAT,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
 fn dummy_texture(device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("placeholder"),
@@ -407,4 +440,18 @@ fn dummy_texture(device: &wgpu::Device) -> wgpu::Texture {
 
 fn dummy_view(device: &wgpu::Device) -> wgpu::TextureView {
     dummy_texture(device).create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hiz_mips_fit_tiny_and_large_targets() {
+        assert_eq!(hiz_mip_count(1, 1), 1);
+        assert_eq!(hiz_mip_count(2, 1), 2);
+        assert_eq!(hiz_mip_count(2, 2), 2);
+        assert_eq!(hiz_mip_count(8, 4), 4);
+        assert_eq!(hiz_mip_count(1920, 1080), HIZ_MIPS);
+    }
 }

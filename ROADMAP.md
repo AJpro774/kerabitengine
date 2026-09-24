@@ -78,4 +78,10 @@ Full ECS/Bevy layer, visual scripting, networking, mobile/console stores, bundli
 **M10–M15** — done (**Kerabit 2.0.0** Scripting Summit)  
 **M16–M24** — done (**Kerabit 3.0.0** Juni + render tier)
 
+## After 3.0 — community
+
+Git-folder mods (`mod.kerabit.json`, `ModIndex`, editor Mods window, `community/catalog.json`). No workshop store. See [API.md](API.md) and [site/docs/modding.html](site/docs/modding.html).
+
+Windows player + editor zips: `scripts/package-windows.ps1`. User data is `~/.kerabit` / `%USERPROFILE%\.kerabit`. See [WINDOWS.md](WINDOWS.md).
+
 See also [ARCHITECTURE.md](ARCHITECTURE.md), [API.md](API.md), and [README.md](README.md).

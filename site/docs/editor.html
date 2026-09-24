@@ -6,7 +6,7 @@
     <title>Editor guide — Kerabit</title>
     <meta
       name="description"
-      content="Kerabit editor: viewport, gizmos, Play, undo/redo, multi-select, prefabs, and Reach authoring."
+      content="Kerabit editor on macOS, Windows, and Linux from source: viewport, Juni panel, Assets browser, FBX, Play, mods."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,8 +25,10 @@
       <nav class="nav-links">
         <a href="/docs/">Docs</a>
         <a href="/docs/getting-started">Start</a>
-        <a href="/docs/api-tour">API tour</a>
+        <a href="/docs/api-tour">API</a>
         <a href="/docs/scripting">Scripting</a>
+        <a href="/docs/editor">Editor</a>
+        <a href="/docs/modding">Mods</a>
         <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
       </nav>
     </header>
@@ -38,16 +40,23 @@
       <h1>Editor guide</h1>
       <p class="docs-lede">
         <code>kerabit-editor</code> is the level tool for Reach, Surge, and your
-        own <code>.kerabit.json</code> scenes. It is a <strong>dev tool</strong>
-        — not bundled inside player zips.
+        own <code>.kerabit.json</code> scenes. Supported from source on
+        <strong>macOS, Windows, and Linux</strong>. It is a
+        <strong>dev tool</strong> — not bundled in Reach.app or
+        <code>reach.exe</code>.
       </p>
 
       <h2>Launch</h2>
       <pre class="code"><code>cargo run -p kerabit-editor</code></pre>
       <p>
-        File → Open a scene under <code>games/*/levels/</code>. Settings (gizmo
-        snap, etc.) persist to <code>~/.kerabit/editor.json</code> (Windows:
-        <code>%LOCALAPPDATA%/Kerabit/</code>).
+        Same command on all three OSes. File → Open
+        a scene under <code>games/*/levels/</code>. Settings (gizmo snap, etc.)
+        persist to <code>~/.kerabit/editor.json</code> (Windows:
+        <code>%USERPROFILE%\.kerabit\editor.json</code>). A Windows zip is
+        <code>Kerabit-editor-windows.zip</code> from
+        <code>pwsh ./scripts/package-windows.ps1</code> — keep
+        <code>games/</code> next to the exe. Mac → PC:
+        <a href="https://github.com/AJpro774/kerabitengine/blob/main/WINDOWS.md">WINDOWS.md</a>.
       </p>
 
       <h2>Viewport</h2>
@@ -78,18 +87,42 @@
 
       <h2>Script panel</h2>
       <p>
-        Menu <strong>Script</strong> → Show panel, Open / Save, Check syntax,
-        Reload from disk. Inspector and environment fields expose
-        <code>extras.script</code>. Play compiles attached scripts and
+        Menu <strong>Script</strong> → Show panel. The panel is a
+        <strong>multiline Juni editor</strong> (not a one-line path). Open /
+        Save, Check syntax, Reload from disk. Inspector and environment fields
+        expose <code>extras.script</code>. Play compiles attached scripts and
         hot-reloads when the <code>.juni</code> file changes on disk. Guide:
         <a href="/docs/scripting">Juni scripting</a>.
       </p>
 
+      <h2>Assets</h2>
+      <p>
+        The <strong>Assets</strong> window is a project-rooted file browser for
+        meshes, textures, and HDR. Browse / Edit / Clear in the inspector pick
+        from that tree. Paths written into the scene stay
+        <strong>relative to the scene file</strong>.
+      </p>
+
+      <h2>Meshes</h2>
+      <p>
+        Inspector mesh files: <strong>OBJ</strong>, <strong>glTF / glb</strong>,
+        and <strong>FBX</strong>.
+      </p>
+
       <h2>Play</h2>
       <p>
-        Toolbar <strong>Play</strong> runs the open scene in a child window.
-        Dirty scenes use a temp snapshot so you do not have to save first.
-        Escape (or Stop) returns to edit with selection restored.
+        Toolbar <strong>Play</strong> runs the open scene in a child window with
+        <strong>no builtin HUD or fly camera</strong> — the scene camera and
+        Juni UI are the game. Dirty scenes use a temp snapshot so you do not
+        have to save first. Escape (or Stop) returns to edit with selection
+        restored.
+      </p>
+
+      <h2>Mods</h2>
+      <p>
+        Menu <strong>Mods</strong> lists folder packs
+        (<code>mod.kerabit.json</code>): enable, Open, Play, New pack. Guide:
+        <a href="/docs/modding">Community mods</a>.
       </p>
 
       <h2>Authoring Reach</h2>
@@ -111,7 +144,8 @@
 
       <p class="docs-foot-links">
         Back: <a href="/docs/getting-started">Getting Started</a> ·
-        <a href="/docs/api-tour">API tour</a>
+        <a href="/docs/api-tour">API tour</a> ·
+        <a href="/docs/modding">Community mods</a>
       </p>
     </main>
 

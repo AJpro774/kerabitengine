@@ -5,15 +5,27 @@ use std::process::{Child, Command};
 
 use egui::{Color32, RichText, Ui};
 use kerabit::{
-    map_script_path, Color, Prefab, Quat, Scene, SceneCamera, SceneEntity, SceneLight,
-    SceneMaterial, SceneMesh, ScriptRuntime, Vec3,
+    map_script_path, Color, ModIndex, ModPack, Prefab, Quat, Scene, SceneCamera, SceneEntity,
+    SceneEnvironment, SceneLight, SceneMaterial, SceneMesh, ScriptRuntime, Vec3,
 };
 
+use crate::assets::{
+    self, file_row, mesh_kind_from_path, project_root_from, rel_to, AssetAction, AssetBrowser,
+    FileRowEvent, MeshExt,
+};
 use crate::selection::Selection;
 use crate::settings::EditorSettings;
 use crate::undo::UndoStack;
 use crate::validation;
 use crate::viewport::Viewport;
+
+/// Which extras bag the open Juni buffer writes back to on Save.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ScriptBind {
+    Scene,
+    Entity(String),
+    Loose,
+}
 
 /// Mesh kind for the inspector combo box.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -22,6 +34,7 @@ enum MeshKind {
     Plane,
     Obj,
     Gltf,
+    Fbx,
 }
 
 impl MeshKind {
@@ -31,6 +44,7 @@ impl MeshKind {
             MeshKind::Plane => "plane",
             MeshKind::Obj => "obj",
             MeshKind::Gltf => "gltf",
+            MeshKind::Fbx => "fbx",
         }
     }
 
@@ -40,6 +54,7 @@ impl MeshKind {
             SceneMesh::Plane { .. } => MeshKind::Plane,
             SceneMesh::Obj { .. } => MeshKind::Obj,
             SceneMesh::Gltf { .. } => MeshKind::Gltf,
+            SceneMesh::Fbx { .. } => MeshKind::Fbx,
         }
     }
 }
@@ -74,6 +89,10 @@ pub struct EditorApp {
     script_text: String,
     script_dirty: bool,
     script_error: Option<String>,
+    script_bind: ScriptBind,
+    assets: AssetBrowser,
+    mods: ModIndex,
+    mods_open: bool,
 }
 
 impl EditorApp {
@@ -94,11 +113,15 @@ impl EditorApp {
             play_child: None,
             play_selection_names: Vec::new(),
             play_temp_path: None,
-            script_open: false,
+            script_open: true,
             script_path: None,
             script_text: String::new(),
             script_dirty: false,
             script_error: None,
+            script_bind: ScriptBind::Scene,
+            assets: AssetBrowser::new(),
+            mods: ModIndex::discover(),
+            mods_open: false,
         }
     }
 
@@ -228,14 +251,30 @@ impl EditorApp {
             }
         };
 
+        self.spawn_play(exe, play_path, self.dirty || self.path.is_none());
+    }
+
+    fn play_file(&mut self, path: PathBuf) {
+        if self.is_playing() {
+            self.status = "Already playing — Stop first".into();
+            return;
+        }
+        let exe = match std::env::current_exe() {
+            Ok(e) => e,
+            Err(err) => {
+                self.status = format!("Play failed: current_exe: {err}");
+                return;
+            }
+        };
+        self.play_temp_path = None;
+        self.spawn_play(exe, path, false);
+    }
+
+    fn spawn_play(&mut self, exe: PathBuf, play_path: PathBuf, snapshot: bool) {
         match Command::new(&exe).arg("--play").arg(&play_path).spawn() {
             Ok(child) => {
                 self.play_child = Some(child);
-                let hint = if self.dirty || self.path.is_none() {
-                    "unsaved snapshot"
-                } else {
-                    "saved scene"
-                };
+                let hint = if snapshot { "snapshot" } else { "saved scene" };
                 self.status = format!(
                     "Playing ({hint}) — Esc in play window or Stop; selection kept"
                 );
@@ -290,6 +329,45 @@ impl EditorApp {
         self.script_text.clear();
         self.script_dirty = false;
         self.script_error = None;
+        self.script_bind = ScriptBind::Scene;
+    }
+
+    fn project_root(&self) -> Option<PathBuf> {
+        project_root_from(self.scene_dir())
+    }
+
+    fn stored_rel(&self, path: &Path) -> String {
+        self.scene_dir()
+            .map(|dir| rel_to(dir, path))
+            .unwrap_or_else(|| {
+                path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned())
+            })
+    }
+
+    fn resolve_stored(&self, rel: &str) -> PathBuf {
+        match self.scene_dir() {
+            Some(dir) => dir.join(rel),
+            None => PathBuf::from(rel),
+        }
+    }
+
+    fn infer_script_bind(&self, path: &Path) -> ScriptBind {
+        let rel = self.stored_rel(path);
+        if map_script_path(&self.scene.extras).as_deref() == Some(rel.as_str())
+            || map_script_path(&self.scene.components).as_deref() == Some(rel.as_str())
+        {
+            return ScriptBind::Scene;
+        }
+        for e in &self.scene.entities {
+            if map_script_path(&e.extras).as_deref() == Some(rel.as_str())
+                || map_script_path(&e.components).as_deref() == Some(rel.as_str())
+            {
+                return ScriptBind::Entity(e.name.clone());
+            }
+        }
+        ScriptBind::Loose
     }
 
     fn sync_script_from_scene(&mut self) {
@@ -299,11 +377,8 @@ impl EditorApp {
             self.clear_script_buffer();
             return;
         };
-        let path = match self.scene_dir() {
-            Some(dir) => dir.join(rel),
-            None => PathBuf::from(rel),
-        };
-        self.load_script_path(path);
+        self.script_bind = ScriptBind::Scene;
+        self.load_script_path(self.resolve_stored(&rel));
     }
 
     fn load_script_path(&mut self, path: PathBuf) {
@@ -337,6 +412,7 @@ impl EditorApp {
             dialog = dialog.set_directory(dir);
         }
         if let Some(path) = dialog.pick_file() {
+            self.script_bind = self.infer_script_bind(&path);
             self.load_script_path(path);
         }
     }
@@ -382,7 +458,7 @@ impl EditorApp {
         if let Some(path) = dialog.save_file() {
             self.script_path = Some(path);
             self.write_script_path();
-            self.bind_script_to_scene();
+            self.bind_open_script();
         }
     }
 
@@ -396,6 +472,7 @@ impl EditorApp {
                 self.script_error = ScriptRuntime::check_source(&self.script_text)
                     .err()
                     .map(|e| e.to_string());
+                self.bind_open_script();
                 self.status = format!("Saved script {}", path.display());
             }
             Err(err) => {
@@ -404,23 +481,28 @@ impl EditorApp {
         }
     }
 
-    fn bind_script_to_scene(&mut self) {
-        let Some(script_path) = self.script_path.as_ref() else {
+    fn bind_open_script(&mut self) {
+        let Some(script_path) = self.script_path.clone() else {
             return;
         };
-        let rel = self
-            .scene_dir()
-            .and_then(|dir| pathdiff_rel(dir, script_path))
-            .unwrap_or_else(|| {
-                script_path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "scene.juni".into())
-            });
-        self.scene
-            .extras
-            .insert("script".into(), serde_json::Value::String(rel));
-        self.mark_dirty();
+        let rel = self.stored_rel(&script_path);
+        match &self.script_bind {
+            ScriptBind::Entity(name) => {
+                let name = name.clone();
+                if let Some(e) = self.scene.entities.iter_mut().find(|e| e.name == name) {
+                    e.extras
+                        .insert("script".into(), serde_json::Value::String(rel));
+                    self.mark_dirty();
+                }
+            }
+            ScriptBind::Scene => {
+                self.scene
+                    .extras
+                    .insert("script".into(), serde_json::Value::String(rel));
+                self.mark_dirty();
+            }
+            ScriptBind::Loose => {}
+        }
     }
 
     fn new_scene_script(&mut self) {
@@ -442,8 +524,104 @@ impl EditorApp {
         self.script_path = None;
         self.script_dirty = true;
         self.script_error = None;
+        self.script_bind = ScriptBind::Scene;
         self.script_open = true;
-        self.status = "New script — Save to attach to the scene".into();
+        self.status = "New scene script — Save to attach".into();
+    }
+
+    fn new_entity_script(&mut self, name: &str) {
+        self.script_text = format!(
+            "# Entity `{name}` — `self_entity()` is this handle.\nfn main() -> i32:\n    return 0\n\nfn frame(dt: f32) -> i32:\n    return 0\n"
+        );
+        self.script_dirty = true;
+        self.script_error = None;
+        self.script_bind = ScriptBind::Entity(name.to_string());
+        self.script_open = true;
+        if let Some(dir) = self.scene_dir() {
+            let mut path = dir.join(format!("{name}.juni"));
+            let mut n = 2;
+            while path.exists() {
+                path = dir.join(format!("{name}_{n}.juni"));
+                n += 1;
+            }
+            self.script_path = Some(path);
+            self.status = format!("New script for `{name}` — Save to write the file");
+        } else {
+            self.script_path = None;
+            self.status = format!("New script for `{name}` — Save the scene, then the script");
+        }
+    }
+
+    fn pick_in_project(&self, title: &str, filter: &str, exts: &[&str]) -> Option<PathBuf> {
+        let mut dialog = rfd::FileDialog::new().add_filter(filter, exts).set_title(title);
+        if let Some(dir) = self.project_root().or_else(|| self.scene_dir().map(Path::to_path_buf)) {
+            dialog = dialog.set_directory(dir);
+        }
+        dialog.pick_file()
+    }
+
+    fn apply_mesh_path(&mut self, path: PathBuf) {
+        let Some(i) = self.selection.primary() else {
+            self.status = "Select an entity to apply a mesh".into();
+            return;
+        };
+        let Some(ext) = mesh_kind_from_path(&path) else {
+            self.status = format!("Not a mesh: {}", path.display());
+            return;
+        };
+        let rel = PathBuf::from(self.stored_rel(&path));
+        self.push_undo_if_needed();
+        self.scene.entities[i].mesh = match ext {
+            MeshExt::Obj => SceneMesh::Obj { path: rel },
+            MeshExt::Gltf => SceneMesh::Gltf { path: rel },
+            MeshExt::Fbx => SceneMesh::Fbx { path: rel },
+        };
+        self.undo.end_gesture();
+        self.mark_dirty();
+        self.status = format!("Mesh → {}", assets::file_label(&self.stored_rel(&path)));
+    }
+
+    fn apply_texture_path(&mut self, path: PathBuf) {
+        let Some(i) = self.selection.primary() else {
+            self.status = "Select an entity to apply a texture".into();
+            return;
+        };
+        let rel = PathBuf::from(self.stored_rel(&path));
+        self.push_undo_if_needed();
+        self.scene.entities[i].material.texture = Some(rel);
+        self.undo.end_gesture();
+        self.mark_dirty();
+        self.status = format!("Texture → {}", assets::file_label(&self.stored_rel(&path)));
+    }
+
+    fn apply_hdr_path(&mut self, path: PathBuf) {
+        let rel = PathBuf::from(self.stored_rel(&path));
+        let intensity = self
+            .scene
+            .environment
+            .as_ref()
+            .map(|e| e.intensity)
+            .unwrap_or(1.0);
+        self.push_undo_if_needed();
+        self.scene.environment = Some(SceneEnvironment {
+            hdr: rel,
+            intensity,
+        });
+        self.undo.end_gesture();
+        self.mark_dirty();
+        self.status = format!("Environment → {}", assets::file_label(&self.stored_rel(&path)));
+    }
+
+    fn apply_asset(&mut self, action: AssetAction) {
+        match action {
+            AssetAction::OpenScript(path) => {
+                self.script_bind = self.infer_script_bind(&path);
+                self.load_script_path(path);
+            }
+            AssetAction::AssignMesh(path) => self.apply_mesh_path(path),
+            AssetAction::AssignTexture(path) => self.apply_texture_path(path),
+            AssetAction::AssignHdr(path) => self.apply_hdr_path(path),
+        }
     }
 
     fn window_title(&self) -> String {
@@ -907,6 +1085,19 @@ impl EditorApp {
                     ui.close_menu();
                 }
             });
+            ui.menu_button("Mods", |ui| {
+                if ui.checkbox(&mut self.mods_open, "Show window").changed() {
+                    if self.mods_open {
+                        self.mods = ModIndex::discover();
+                    }
+                    ui.close_menu();
+                }
+                if ui.button("Rescan folders").clicked() {
+                    self.mods = ModIndex::discover();
+                    self.status = format!("{} pack(s) found", self.mods.packs().len());
+                    ui.close_menu();
+                }
+            });
             ui.menu_button("Play", |ui| {
                 let playing = self.is_playing();
                 if ui
@@ -934,7 +1125,7 @@ impl EditorApp {
             }
             if ui
                 .add_enabled(!playing, egui::Button::new("▶ Play"))
-                .on_hover_text("Play current scene (Ctrl+P) — dirty scenes use a temp snapshot")
+                .on_hover_text("Play the scene as a game (Ctrl+P) — no builtin HUD or fly camera")
                 .clicked()
             {
                 self.play_scene();
@@ -1070,7 +1261,7 @@ impl EditorApp {
             _ => 10.0,
         };
         let mut mesh_path = match &self.scene.entities[i].mesh {
-            SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+            SceneMesh::Obj { path } | SceneMesh::Gltf { path } | SceneMesh::Fbx { path } => {
                 path.to_string_lossy().into_owned()
             }
             _ => String::new(),
@@ -1171,6 +1362,7 @@ impl EditorApp {
                     MeshKind::Plane,
                     MeshKind::Obj,
                     MeshKind::Gltf,
+                    MeshKind::Fbx,
                 ] {
                     if ui
                         .selectable_value(&mut mesh_kind, kind, kind.label())
@@ -1186,10 +1378,32 @@ impl EditorApp {
                     .add(egui::DragValue::new(&mut plane_size).speed(0.1).prefix("size "))
                     .changed();
             }
-            MeshKind::Obj | MeshKind::Gltf => {
-                dirty |= ui.text_edit_singleline(&mut mesh_path).changed();
+            MeshKind::Obj | MeshKind::Gltf | MeshKind::Fbx => match file_row(ui, &mesh_path, false) {
+                FileRowEvent::Browse => {
+                    if let Some(path) =
+                        self.pick_in_project("Mesh", "Mesh", &["obj", "glb", "gltf", "fbx"])
+                    {
+                        self.apply_mesh_path(path);
+                        return;
+                    }
+                }
+                FileRowEvent::Clear => {
+                    mesh_kind = MeshKind::Cube;
+                    mesh_path.clear();
+                    dirty = true;
+                }
+                _ => {}
+            },
+            MeshKind::Cube => {
+                if ui.button("Browse mesh…").clicked() {
+                    if let Some(path) =
+                        self.pick_in_project("Mesh", "Mesh", &["obj", "glb", "gltf", "fbx"])
+                    {
+                        self.apply_mesh_path(path);
+                        return;
+                    }
+                }
             }
-            MeshKind::Cube => {}
         }
 
         ui.separator();
@@ -1211,10 +1425,22 @@ impl EditorApp {
                     .prefix("metallic "),
             )
             .changed();
-        ui.horizontal(|ui| {
-            ui.label("Texture");
-            dirty |= ui.text_edit_singleline(&mut texture).changed();
-        });
+        ui.label("Texture");
+        match file_row(ui, &texture, false) {
+            FileRowEvent::Browse => {
+                if let Some(path) =
+                    self.pick_in_project("Texture", "Image", &["png", "jpg", "jpeg"])
+                {
+                    self.apply_texture_path(path);
+                    return;
+                }
+            }
+            FileRowEvent::Clear => {
+                texture.clear();
+                dirty = true;
+            }
+            _ => {}
+        }
 
         ui.separator();
         ui.label("Parent");
@@ -1245,21 +1471,35 @@ impl EditorApp {
 
         ui.separator();
         ui.label("Juni script");
-        ui.horizontal(|ui| {
-            dirty |= ui.text_edit_singleline(&mut script_rel).changed();
-            if ui
-                .add_enabled(!script_rel.trim().is_empty(), egui::Button::new("Edit"))
-                .clicked()
-            {
-                let path = match self.scene_dir() {
-                    Some(dir) => dir.join(script_rel.trim()),
-                    None => PathBuf::from(script_rel.trim()),
-                };
-                self.load_script_path(path);
+        match file_row(ui, &script_rel, true) {
+            FileRowEvent::Browse => {
+                if let Some(path) = self.pick_in_project("Juni script", "Juni", &["juni"]) {
+                    let name = self.scene.entities[i].name.clone();
+                    self.script_bind = ScriptBind::Entity(name);
+                    self.load_script_path(path);
+                    self.bind_open_script();
+                    return;
+                }
             }
-        });
+            FileRowEvent::Open => {
+                let name = self.scene.entities[i].name.clone();
+                self.script_bind = ScriptBind::Entity(name);
+                self.load_script_path(self.resolve_stored(script_rel.trim()));
+                return;
+            }
+            FileRowEvent::Clear => {
+                script_rel.clear();
+                dirty = true;
+            }
+            FileRowEvent::None => {}
+        }
+        if ui.button("New script…").clicked() {
+            let name = self.scene.entities[i].name.clone();
+            self.new_entity_script(&name);
+            return;
+        }
         ui.label(
-            RichText::new("Relative to the scene file (`extras.script`).")
+            RichText::new("Opens in the Juni panel. Paths stay relative to the scene file.")
                 .small()
                 .weak(),
         );
@@ -1282,6 +1522,9 @@ impl EditorApp {
                     path: PathBuf::from(mesh_path.trim()),
                 },
                 MeshKind::Gltf => SceneMesh::Gltf {
+                    path: PathBuf::from(mesh_path.trim()),
+                },
+                MeshKind::Fbx => SceneMesh::Fbx {
                     path: PathBuf::from(mesh_path.trim()),
                 },
             };
@@ -1382,21 +1625,74 @@ impl EditorApp {
         dirty |= ui.color_edit_button_rgb(&mut light_color).changed();
 
         ui.separator();
+        ui.label("IBL environment");
+        let hdr_label = self
+            .scene
+            .environment
+            .as_ref()
+            .map(|e| e.hdr.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        match file_row(ui, &hdr_label, false) {
+            FileRowEvent::Browse => {
+                if let Some(path) = self.pick_in_project("HDR environment", "HDR", &["hdr"]) {
+                    self.apply_hdr_path(path);
+                    return;
+                }
+            }
+            FileRowEvent::Clear => {
+                self.push_undo_if_needed();
+                self.scene.environment = None;
+                self.undo.end_gesture();
+                self.mark_dirty();
+                return;
+            }
+            _ => {}
+        }
+        if self.scene.environment.is_some() {
+            let mut intensity = self.scene.environment.as_ref().map(|e| e.intensity).unwrap_or(1.0);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut intensity)
+                        .speed(0.05)
+                        .range(0.0..=8.0)
+                        .prefix("intensity "),
+                )
+                .changed()
+            {
+                if let Some(env) = &mut self.scene.environment {
+                    env.intensity = intensity;
+                }
+                dirty = true;
+            }
+        }
+
+        ui.separator();
         ui.label("Scene Juni script");
         let mut scene_script = map_script_path(&self.scene.extras).unwrap_or_default();
-        ui.horizontal(|ui| {
-            dirty |= ui.text_edit_singleline(&mut scene_script).changed();
-            if ui
-                .add_enabled(!scene_script.trim().is_empty(), egui::Button::new("Edit"))
-                .clicked()
-            {
-                let path = match self.scene_dir() {
-                    Some(dir) => dir.join(scene_script.trim()),
-                    None => PathBuf::from(scene_script.trim()),
-                };
-                self.load_script_path(path);
+        match file_row(ui, &scene_script, true) {
+            FileRowEvent::Browse => {
+                if let Some(path) = self.pick_in_project("Juni script", "Juni", &["juni"]) {
+                    self.script_bind = ScriptBind::Scene;
+                    self.load_script_path(path);
+                    self.bind_open_script();
+                    return;
+                }
             }
-        });
+            FileRowEvent::Open => {
+                self.script_bind = ScriptBind::Scene;
+                self.load_script_path(self.resolve_stored(scene_script.trim()));
+                return;
+            }
+            FileRowEvent::Clear => {
+                scene_script.clear();
+                dirty = true;
+            }
+            FileRowEvent::None => {}
+        }
+        if ui.button("New scene script…").clicked() {
+            self.new_scene_script();
+            return;
+        }
 
         if dirty {
             self.push_undo_if_needed();
@@ -1471,15 +1767,29 @@ impl EditorApp {
     fn ui_script_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.heading("Juni");
+            let bind = match &self.script_bind {
+                ScriptBind::Scene => "scene".to_string(),
+                ScriptBind::Entity(name) => format!("entity `{name}`"),
+                ScriptBind::Loose => "unattached".to_string(),
+            };
+            ui.label(RichText::new(bind).weak());
             let label = self
                 .script_path
                 .as_ref()
                 .and_then(|p| p.file_name())
                 .and_then(|s| s.to_str())
                 .unwrap_or("(unsaved)");
-            ui.label(RichText::new(label).weak());
+            ui.label(RichText::new(label).strong());
+            let lines = self.script_text.lines().count().max(1);
+            ui.label(RichText::new(format!("{lines} lines")).weak().small());
             if self.script_dirty {
                 ui.colored_label(Color32::from_rgb(220, 160, 60), "modified");
+            }
+            if ui.button("New").clicked() {
+                self.new_scene_script();
+            }
+            if ui.button("Open…").clicked() {
+                self.open_script_dialog();
             }
             if ui.button("Save").clicked() {
                 self.save_script();
@@ -1490,7 +1800,27 @@ impl EditorApp {
             if ui.button("Reload").clicked() {
                 self.reload_script_from_disk();
             }
-            if ui.button("Close").clicked() {
+            if self.script_bind == ScriptBind::Loose {
+                if ui.button("Attach to scene").clicked() {
+                    self.script_bind = ScriptBind::Scene;
+                    self.bind_open_script();
+                }
+                if ui
+                    .add_enabled(
+                        self.selection.primary().is_some(),
+                        egui::Button::new("Attach to entity"),
+                    )
+                    .clicked()
+                {
+                    if let Some(i) = self.selection.primary() {
+                        if let Some(name) = self.scene.entities.get(i).map(|e| e.name.clone()) {
+                            self.script_bind = ScriptBind::Entity(name);
+                            self.bind_open_script();
+                        }
+                    }
+                }
+            }
+            if ui.button("Hide").clicked() {
                 self.script_open = false;
             }
         });
@@ -1498,17 +1828,15 @@ impl EditorApp {
             ui.colored_label(Color32::from_rgb(220, 80, 80), err);
         }
         let mut text = std::mem::take(&mut self.script_text);
-        let response = egui::ScrollArea::vertical()
-            .max_height(220.0)
-            .show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut text)
-                        .code_editor()
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(8),
-                )
-            })
-            .inner;
+        let response = ui.add(
+            egui::TextEdit::multiline(&mut text)
+                .id_salt("juni_editor")
+                .code_editor()
+                .font(egui::FontId::monospace(14.0))
+                .desired_width(f32::INFINITY)
+                .desired_rows(16)
+                .lock_focus(true),
+        );
         self.script_text = text;
         if response.changed() {
             self.script_dirty = true;
@@ -1516,6 +1844,124 @@ impl EditorApp {
                 .err()
                 .map(|e| e.to_string());
         }
+    }
+
+    fn ui_mods_window(&mut self, ctx: &egui::Context) {
+        if !self.mods_open {
+            return;
+        }
+        let mut open = self.mods_open;
+        egui::Window::new("Mods")
+            .open(&mut open)
+            .default_width(420.0)
+            .default_height(360.0)
+            .show(ctx, |ui| {
+                ui.label(
+                    RichText::new(
+                        "Folders: ./mods  ·  ~/.kerabit/mods (%USERPROFILE%\\.kerabit\\mods)  ·  KERABIT_MODS (; on Windows)",
+                    )
+                    .small()
+                    .weak(),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Rescan").clicked() {
+                        self.mods = ModIndex::discover();
+                    }
+                    if ui.button("New pack…").clicked() {
+                        let parent = std::env::current_dir()
+                            .ok()
+                            .map(|c| c.join("mods"))
+                            .unwrap_or_else(|| PathBuf::from("mods"));
+                        match ModIndex::scaffold(&parent, "my-mod", "My Mod") {
+                            Ok(dir) => {
+                                self.mods = ModIndex::discover();
+                                self.status = format!("Created {}", dir.display());
+                            }
+                            Err(err) => self.status = format!("Scaffold failed: {err}"),
+                        }
+                    }
+                });
+                ui.separator();
+                if self.mods.packs().is_empty() {
+                    ui.label("No packs found. Clone a repo into ./mods or click New pack.");
+                    return;
+                }
+                let packs: Vec<ModPack> = self.mods.packs().to_vec();
+                let mut toggled = None;
+                let mut play = None;
+                let mut open_scene = None;
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for pack in &packs {
+                        let id = pack.manifest.id.clone();
+                        let mut on = self.mods.is_enabled(&id);
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                if ui.checkbox(&mut on, "").changed() {
+                                    toggled = Some((id.clone(), on));
+                                }
+                                ui.strong(&pack.manifest.name);
+                                ui.label(RichText::new(&id).weak().small());
+                            });
+                            if !pack.manifest.description.is_empty() {
+                                ui.label(RichText::new(&pack.manifest.description).small());
+                            }
+                            ui.label(
+                                RichText::new(format!(
+                                    "{}  ·  game {}",
+                                    pack.manifest.version, pack.manifest.game
+                                ))
+                                .small()
+                                .weak(),
+                            );
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add_enabled(
+                                        pack.entry_scene().is_some(),
+                                        egui::Button::new("Play"),
+                                    )
+                                    .clicked()
+                                {
+                                    play = pack.entry_scene();
+                                }
+                                if ui
+                                    .add_enabled(
+                                        pack.entry_scene().is_some(),
+                                        egui::Button::new("Open"),
+                                    )
+                                    .clicked()
+                                {
+                                    open_scene = pack.entry_scene();
+                                }
+                            });
+                        });
+                    }
+                });
+                if let Some((id, on)) = toggled {
+                    self.mods.set_enabled(&id, on);
+                    if let Err(err) = self.mods.save_prefs() {
+                        self.status = format!("Could not save mod prefs: {err}");
+                    }
+                }
+                if let Some(path) = play {
+                    self.play_file(path);
+                }
+                if let Some(path) = open_scene {
+                    match Scene::load(&path) {
+                        Ok(scene) => {
+                            self.undo.clear();
+                            self.scene = scene;
+                            self.path = Some(path.clone());
+                            self.dirty = false;
+                            self.selection.clear();
+                            self.rename_buf.clear();
+                            self.sync_script_from_scene();
+                            self.status = format!("Opened {}", path.display());
+                        }
+                        Err(err) => self.status = format!("Open failed: {err}"),
+                    }
+                }
+            });
+        self.mods_open = open;
     }
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
@@ -1601,6 +2047,8 @@ impl eframe::App for EditorApp {
             self.ui_menu(ui);
         });
 
+        self.ui_mods_window(ctx);
+
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             self.ui_status(ui, &errors);
         });
@@ -1608,22 +2056,35 @@ impl eframe::App for EditorApp {
         if self.script_open {
             egui::TopBottomPanel::bottom("script_panel")
                 .resizable(true)
-                .default_height(200.0)
+                .default_height(280.0)
+                .min_height(160.0)
                 .show(ctx, |ui| {
                     self.ui_script_panel(ui);
                 });
         }
 
+        let mut asset_action = None;
+        self.assets.sync_root(self.project_root());
         egui::SidePanel::left("hierarchy")
-            .default_width(260.0)
+            .default_width(280.0)
             .show(ctx, |ui| {
                 ui.add_enabled_ui(!self.is_playing(), |ui| {
+                    egui::TopBottomPanel::bottom("assets")
+                        .resizable(true)
+                        .default_height(240.0)
+                        .min_height(120.0)
+                        .show_inside(ui, |ui| {
+                            asset_action = self.assets.ui(ui);
+                        });
                     self.ui_hierarchy(ui);
                 });
             });
+        if let Some(action) = asset_action {
+            self.apply_asset(action);
+        }
 
         egui::SidePanel::right("inspector")
-            .default_width(320.0)
+            .default_width(340.0)
             .show(ctx, |ui| {
                 ui.add_enabled_ui(!self.is_playing(), |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1708,12 +2169,6 @@ fn default_prefabs_dir() -> Option<PathBuf> {
     } else {
         default_levels_dir()
     }
-}
-
-fn pathdiff_rel(base: &Path, path: &Path) -> Option<String> {
-    path.strip_prefix(base)
-        .ok()
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
 }
 
 fn ensure_prefab_ext(path: PathBuf) -> PathBuf {

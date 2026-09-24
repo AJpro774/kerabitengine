@@ -17,6 +17,8 @@ pub enum AssetError {
     Image { path: PathBuf, message: String },
     #[error("failed to load glTF `{path}`: {message}")]
     Gltf { path: PathBuf, message: String },
+    #[error("failed to load FBX `{path}`: {message}")]
+    Fbx { path: PathBuf, message: String },
     #[error("asset `{path}` has no mesh data")]
     EmptyMesh { path: PathBuf },
     #[error("mesh in `{path}` exceeds u16 index limit ({count} vertices)")]

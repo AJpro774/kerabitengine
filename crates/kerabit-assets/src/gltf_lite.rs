@@ -160,7 +160,7 @@ fn texture_from_gltf_image(
     Ok(Texture::from_rgba8(image.width, image.height, rgba))
 }
 
-fn generate_smooth_normals(vertices: &mut [Vertex], indices: &[u16]) {
+pub(crate) fn generate_smooth_normals(vertices: &mut [Vertex], indices: &[u16]) {
     for v in vertices.iter_mut() {
         v.normal = [0.0, 0.0, 0.0];
     }

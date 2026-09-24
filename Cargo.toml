@@ -44,6 +44,7 @@ raw-window-handle = "0.6"
 image = { version = "0.25", default-features = false, features = ["png", "hdr"] }
 tobj = "4.0"
 gltf = { version = "1.4", default-features = false, features = ["utils", "import"] }
+ufbx = "0.11"
 
 # Audio (P6/M3) — WAV-only decode to keep footprint lean (no mp3/flac/vorbis); spatial + buses + streaming music
 rodio = { version = "0.20", default-features = false, features = ["wav"] }

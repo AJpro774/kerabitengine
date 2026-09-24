@@ -81,7 +81,7 @@ fn main() {
 | `Entity` | **P3/P4/P7/M2** | Spawn builder: `new` / `mesh` / `material` / `at` / `rotation` / `scale` / `parent` / `tag` / `tags` / `layer` / `enabled` |
 | `Mesh` | **P5** | `cube()` / `plane(size)` / `load_obj(path)` |
 | `Material` | **P5/M1** | `color(Color)` + `.roughness` / `.metallic` + `.with_texture` / `.with_normal_map` / `load_png` |
-| `load_gltf` / `Texture` / `AssetError` | **P5** | First mesh + base color factor/texture |
+| `load_gltf` / `load_fbx` / `Texture` / `AssetError` | **P5** | First mesh + base color (glTF texture; FBX color only) |
 | `Camera`, `Light`, `LightKind`, `MAX_LIGHTS` | **P3/M1** | `perspective` + `look_at`; `Light::sun` / `point` + intensity/range; up to **4** lights |
 | `ParticleBurst` | **M1** | Billboard burst via `ctx.spawn_particles` |
 | `Key`, `MouseButton`, `InputState` | **P3** | `key_down` / `key_pressed`; mouse pos / delta / buttons |
@@ -125,6 +125,7 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 
 - `Mesh::load_obj(path)` — first OBJ mesh (pos/normals/UVs)
 - `load_gltf(path) -> (Mesh, Material)` — first mesh + base color factor/texture (no animation)
+- `Mesh::load_fbx(path)` / `load_fbx(path) -> (Mesh, Material)` — first FBX mesh (ASCII or binary; Y-up meters; no animation/skins)
 - Tiny fixtures: `crates/kerabit-assets/fixtures/` (`box.obj`, `box.gltf`, `checker.png`)
 - Example: `cargo run -p kerabit --example load_mesh`
 
@@ -169,7 +170,7 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 ### Scenes (P7)
 
 - `Scene::load(path)` / `Scene::save(path)` / `from_json` / `to_json` — round-trip `.kerabit.json`
-- Format mirrors spawn: entities (mesh primitive or `obj`/`gltf` path, material, `at` / `rotation` / `scale` / `parent` / optional `tags`), camera, light, clear/ambient
+- Format mirrors spawn: entities (mesh primitive or `obj`/`gltf`/`fbx` path, material, `at` / `rotation` / `scale` / `parent` / optional `tags`), camera, light, clear/ambient
 - **Lighting / sky (E5 + M1 + 3.0):** Scene authors one directional **sun** (`light.direction` / `intensity` / `color`) plus `ambient` and `clear_color`. Runtime code may set up to **256** lights via `Kerabit::lights` / `ctx.set_lights` (≤4 directional + point; point lights are clustered per frame); four cascaded soft shadows follow the first directional only. The renderer paints a **sky gradient** using `clear_color` as the horizon (zenith is derived) and lights the scene from it (SH irradiance + prefiltered specular) unless an environment is set.
 - **Environment (3.0):** optional additive root `"environment": { "hdr": "path.hdr", "intensity": 1.0 }` — an equirectangular Radiance HDR (relative to the scene file) used for image-based lighting and reflections. Omitted → procedural sky. `SCENE_VERSION` stays **1**.
 - **LODs (3.0):** optional additive per-entity `"lods": [{ "mesh": { … }, "distance": 25.0 }, …]` (same mesh wire format; nearest first, up to two levels used). The renderer swaps meshes by camera distance; shadows and the prepass follow. Omitted → single mesh. `SCENE_VERSION` stays **1**.
@@ -181,7 +182,11 @@ Live spawned objects are `kerabit::world::Entity` (transform + name + parent/chi
 - **Prefabs (M4):** `Prefab::load` / `save` / `from_json` / `to_json` / `instantiate(scene, offset)` — `.kerabit.prefab.json` (version + entities only; same entity wire format as scenes). Editor: File → Save Prefab / Instance Prefab. Samples under `games/reach/prefabs/`.
 - Checked-in levels: `games/reach/levels/*.kerabit.json` (flagship, 16 levels); `games/surge/levels/*.kerabit.json` (score-attack, 5 arenas); author in `kerabit-editor`; `examples/scenes/mini_game.kerabit.json` (legacy)
 - Play: `cargo run -p reach` · `cargo run -p surge` · legacy: `cargo run -p kerabit --example mini_game` · editor: `cargo run -p kerabit-editor`
-- Relative `obj` / `gltf` / texture paths in a scene or prefab file resolve against that file's directory (`Scene::load` / `Prefab::load`)
+- Relative `obj` / `gltf` / `fbx` / texture paths in a scene or prefab file resolve against that file's directory (`Scene::load` / `Prefab::load`)
+
+### Community mods
+
+A pack is a folder containing `mod.kerabit.json` (`id`, `name`, optional `version` / `author` / `description` / `homepage`, `game` default `*`, `scenes` relative to the pack). Discovery: `./mods`, `user_data_dir()/mods` (`~/.kerabit` / `%USERPROFILE%\.kerabit`, override `KERABIT_HOME`), `KERABIT_MODS` (`:` on Unix, `;` on Windows). Prefs: `user_data_dir()/mods.json`. API: `user_data_dir` / `packaged_data_root` / `ModIndex::discover` / `discover_in` / `enabled` / `extra_scenes(game)` / `resolve(rel)` / `scaffold`. Sample: `mods/hello-cube`. Catalog (git URLs, not a store): `community/catalog.json`. Editor: Mods window (Play / Open / enable). MCP: `kerabit_list_mods`, `kerabit_scaffold_mod`. Windows packaging: `scripts/package-windows.ps1`.
 
 ### Runtime Scene reload (E0)
 

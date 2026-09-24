@@ -8,6 +8,7 @@
 //! that as a child of the same binary (no sidecar).
 
 mod app;
+mod assets;
 mod gizmo;
 mod orbit;
 mod play;

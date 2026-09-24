@@ -59,6 +59,8 @@ Stable built entry (after `npm run build`):
 | `kerabit_read` / `kerabit_write` | Sandboxed file IO under `KERABIT_ROOT` |
 | `kerabit_validate_scene` | Scene JSON checks (names, parents, scripts, meshes) |
 | `kerabit_check_juni` | `cargo run -p kerabit-juni --bin check_juni` (types + host API, `file:line:col` diagnostics) |
+| `kerabit_list_mods` | Installed packs + `community/catalog.json` |
+| `kerabit_scaffold_mod` | Create `mods/<id>` with `mod.kerabit.json` + cube scene |
 | `kerabit_scaffold_game` | Spark-shaped `.kerabit.json` + `.juni` |
 | `kerabit_run` / `kerabit_stop` / `kerabit_list_runs` | Detached `cargo run` lifecycle (logs in `.kerabit/mcp-runs/`) |
 

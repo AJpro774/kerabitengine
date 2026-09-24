@@ -260,14 +260,7 @@ fn progress_path() -> PathBuf {
 }
 
 fn progress_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Kerabit"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".kerabit"))
-    }
+    kerabit::user_data_dir()
 }
 
 fn chapter_for_level(level_index: usize) -> usize {
@@ -284,20 +277,7 @@ fn chapter_for_level(level_index: usize) -> usize {
 /// 2. Directory containing the executable (flat release zip)
 /// 3. `CARGO_MANIFEST_DIR` (`cargo run` / `cargo test`)
 fn root_dir() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(mac_os) = exe.parent() {
-            if mac_os.file_name().is_some_and(|n| n == "MacOS") {
-                let resources = mac_os.join("../Resources");
-                if resources.join("levels").is_dir() {
-                    return resources.canonicalize().unwrap_or(resources);
-                }
-            }
-            if mac_os.join("levels").is_dir() {
-                return mac_os.to_path_buf();
-            }
-        }
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    kerabit::packaged_data_root("levels", env!("CARGO_MANIFEST_DIR"))
 }
 
 fn level_path(index: usize) -> PathBuf {

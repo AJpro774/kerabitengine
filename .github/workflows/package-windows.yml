@@ -1,0 +1,37 @@
+# Windows player + editor zips for every crate.
+# Trigger: Actions → Package Windows → Run workflow
+# Or: gh workflow run package-windows.yml
+name: Package Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package-windows:
+    name: Windows zips
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Package all Windows products
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kerabit-windows
+          path: |
+            dist/Reach-windows.zip
+            dist/Surge-windows.zip
+            dist/Spark-windows.zip
+            dist/Strike-windows.zip
+            dist/Showcase-windows.zip
+            dist/Kerabit-editor-windows.zip
+          if-no-files-found: error

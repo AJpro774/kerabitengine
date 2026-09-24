@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "note": "Git-hosted Kerabit mods. Clone into ./mods or ~/.kerabit/mods. No store — PRs add entries.",
+  "mods": [
+    {
+      "id": "hello-cube",
+      "name": "Hello Cube",
+      "description": "Sample spinning cube shipped in this repo.",
+      "git": "https://github.com/AJpro774/kerabitengine",
+      "path": "mods/hello-cube",
+      "game": "*"
+    }
+  ]
+}

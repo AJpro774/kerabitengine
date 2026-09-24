@@ -3,7 +3,7 @@ name = "kerabit-assets"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Asset loaders for Kerabit (OBJ / PNG / glTF lite)"
+description = "Asset loaders for Kerabit (OBJ / PNG / glTF lite / FBX)"
 rust-version.workspace = true
 
 [dependencies]
@@ -15,6 +15,7 @@ thiserror = { workspace = true }
 image = { workspace = true }
 tobj = { workspace = true }
 gltf = { workspace = true }
+ufbx = { workspace = true }
 
 [lints]
 workspace = true

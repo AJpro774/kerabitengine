@@ -501,7 +501,7 @@ fn mesh_key(mesh: &SceneMesh, scene_dir: Option<&Path>) -> MeshKey {
         SceneMesh::Plane { size } => MeshKey::Plane {
             bits: size.to_bits(),
         },
-        SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+        SceneMesh::Obj { path } | SceneMesh::Gltf { path } | SceneMesh::Fbx { path } => {
             MeshKey::Path(resolve_asset_path(path, scene_dir))
         }
     }
@@ -512,12 +512,11 @@ fn mesh_from_key(key: &MeshKey, _scene_dir: Option<&Path>) -> Option<Mesh> {
         MeshKey::Cube => Some(Mesh::cube()),
         MeshKey::Plane { bits } => Some(Mesh::plane(f32::from_bits(*bits))),
         MeshKey::Path(path) => {
-            if path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| e.eq_ignore_ascii_case("gltf") || e.eq_ignore_ascii_case("glb"))
-            {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext.eq_ignore_ascii_case("gltf") || ext.eq_ignore_ascii_case("glb") {
                 kerabit_assets::load_gltf(path).ok().map(|g| g.mesh)
+            } else if ext.eq_ignore_ascii_case("fbx") {
+                kerabit_assets::load_fbx(path).ok().map(|g| g.mesh)
             } else {
                 kerabit_assets::load_obj(path).ok()
             }
@@ -536,6 +535,12 @@ fn resolve_mesh(mesh: &SceneMesh, scene_dir: Option<&Path>) -> Mesh {
         SceneMesh::Gltf { path } => {
             let p = resolve_asset_path(path, scene_dir);
             kerabit_assets::load_gltf(&p)
+                .map(|g| g.mesh)
+                .unwrap_or_else(|_| Mesh::cube())
+        }
+        SceneMesh::Fbx { path } => {
+            let p = resolve_asset_path(path, scene_dir);
+            kerabit_assets::load_fbx(&p)
                 .map(|g| g.mesh)
                 .unwrap_or_else(|_| Mesh::cube())
         }

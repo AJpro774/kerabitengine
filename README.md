@@ -52,7 +52,7 @@ Cursor wiring and tool list: [tools/kerabit-mcp/README.md](tools/kerabit-mcp/REA
 | Platform | Artifact | How to run |
 |----------|----------|------------|
 | macOS | `Reach-macos.zip` | Double-click **Reach.app** |
-| Windows | `Reach-windows.zip` | Run `reach.exe` (keep `levels/` + `assets/` beside it) |
+| Windows | `Reach-windows.zip` (and Surge / Spark / Strike / Showcase / editor) | Run the `.exe` next to its `levels/` or `scenes/` folder |
 
 Zips appear on [GitHub Releases](https://github.com/AJpro774/kerabitengine/releases) when cut, or as CI artifacts from the `package-reach` workflow (`workflow_dispatch`). Site download notes: [kerabitengine.vercel.app/#download](https://kerabitengine.vercel.app/#download).
 
@@ -64,16 +64,19 @@ Zips appear on [GitHub Releases](https://github.com/AJpro774/kerabitengine/relea
 # → dist/Reach.app and dist/Reach-macos.zip
 open dist/Reach.app
 
-# Windows (PowerShell)
+# Windows (PowerShell) — Reach only, or everything:
 pwsh ./scripts/package-reach-windows.ps1
-# → dist/Reach-windows/ and dist/Reach-windows.zip
+pwsh ./scripts/package-windows.ps1
+# → dist/*-windows.zip (Reach, Surge, Spark, Strike, Showcase, editor)
 ```
+
+Moving the whole checkout to a PC: [WINDOWS.md](WINDOWS.md) (`%USERPROFILE%\.kerabit` is the same folder as Mac `~/.kerabit`).
 
 **Dev run** (source tree):
 
 ```bash
 cargo run -p reach
-# or release binary:
+# release binary (Windows: target\release\reach.exe)
 cargo build -p reach --release && ./target/release/reach
 ```
 
@@ -87,6 +90,8 @@ Controls: **Space** start / next · **WASD** move · **R** retry · **Escape** q
 | API tour | [docs/api-tour](https://kerabitengine.vercel.app/docs/api-tour) |
 | Juni scripting (3.0) | [docs/scripting](https://kerabitengine.vercel.app/docs/scripting) |
 | Editor guide | [docs/editor](https://kerabitengine.vercel.app/docs/editor) |
+| Community mods | [docs/modding](https://kerabitengine.vercel.app/docs/modding) |
+| Windows (Mac → PC) | [WINDOWS.md](WINDOWS.md) |
 
 ## Quick start (engine / authors)
 
@@ -110,7 +115,9 @@ cargo run -p kerabit --example playground
 cargo run -p kerabit-editor
 ```
 
-Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select (**Shift+click** multi-select), **W/E/R** for move/rotate/scale gizmos, configurable snap (persisted in `~/.kerabit/editor.json`), **Place cube** then click the ground plane. **Ctrl+Z / Ctrl+Shift+Z** undo/redo; Edit → Align X/Y/Z; File → Save Prefab / Instance Prefab (`.kerabit.prefab.json`, samples in `games/reach/prefabs/`). File → Save writes `.kerabit.json`. **Script** menu opens a Juni panel (`extras.script` on the scene or an entity; **Check** type-checks against the host API). **Play** runs the scene (and its scripts) in a child window (dirty scenes use a temp snapshot; Esc returns with selection intact). Editor is a **dev tool** — not bundled inside the shipped Reach.app.
+Community mods live under `mods/` (sample: `mods/hello-cube`) or `~/.kerabit/mods`. Each pack is a folder with `mod.kerabit.json`. Editor **Mods** window: enable, Open, Play. Share via git; catalog is `community/catalog.json`.
+
+Open a Reach or Surge level under `games/*/levels/`. Central 3D viewport (orbit RMB, pan MMB, zoom scroll), click to select (**Shift+click** multi-select), **W/E/R** for move/rotate/scale gizmos, configurable snap (persisted in `~/.kerabit/editor.json`), **Place cube** then click the ground plane. **Ctrl+Z / Ctrl+Shift+Z** undo/redo; Edit → Align X/Y/Z; File → Save Prefab / Instance Prefab (`.kerabit.prefab.json`, samples in `games/reach/prefabs/`). File → Save writes `.kerabit.json`. **Script** menu opens a Juni panel (`extras.script` on the scene or an entity; **Check** type-checks against the host API). **Play** runs the scene (and its scripts) in a child window with no builtin HUD or fly camera — the scene camera and Juni UI are the game (dirty scenes use a temp snapshot; Esc returns with selection intact). Editor is a **dev tool** — not bundled inside the shipped Reach.app.
 
 ### Juni scripting (3.0)
 

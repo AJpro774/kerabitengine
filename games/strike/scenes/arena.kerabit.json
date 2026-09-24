@@ -65,7 +65,7 @@
     {
       "name": "weapon",
       "tags": ["weapon"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/pistol.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/pistol.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.45 },
       "at": [-5.0, 1.4, 4.6],
       "scale": [1.0, 1.0, 1.0]
@@ -73,35 +73,35 @@
     {
       "name": "crate_a",
       "tags": ["cover"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/crate.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/crate.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.85 },
       "at": [2.2, 0.0, -1.8]
     },
     {
       "name": "crate_b",
       "tags": ["cover"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/crate.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/crate.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.85 },
       "at": [-2.4, 0.0, 2.6]
     },
     {
       "name": "crate_c",
       "tags": ["cover"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/crate.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/crate.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.85 },
       "at": [4.6, 0.0, 3.2]
     },
     {
       "name": "barrel_a",
       "tags": ["cover"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/barrel.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/barrel.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.55 },
       "at": [-3.5, 0.0, -3.2]
     },
     {
       "name": "barrel_b",
       "tags": ["cover"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/barrel.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/barrel.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.55 },
       "at": [1.2, 0.0, 4.4]
     },
@@ -116,35 +116,35 @@
     {
       "name": "enemy_a",
       "tags": ["enemy"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/dummy.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
       "at": [5.5, 0.0, -5.2]
     },
     {
       "name": "enemy_b",
       "tags": ["enemy"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/dummy.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
       "at": [-5.2, 0.0, -5.4]
     },
     {
       "name": "enemy_c",
       "tags": ["enemy"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/dummy.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
       "at": [6.0, 0.0, 0.8]
     },
     {
       "name": "enemy_d",
       "tags": ["enemy"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/dummy.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
       "at": [-1.5, 0.0, -6.2]
     },
     {
       "name": "enemy_e",
       "tags": ["enemy"],
-      "mesh": { "type": "gltf", "path": "games/strike/assets/dummy.glb" },
+      "mesh": { "type": "gltf", "path": "../assets/dummy.glb" },
       "material": { "color": [1.0, 1.0, 1.0], "roughness": 0.65 },
       "at": [3.4, 0.0, 6.0]
     }

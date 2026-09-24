@@ -34,7 +34,7 @@ pub fn validate(scene: &Scene, scene_dir: Option<&Path>) -> Vec<String> {
         }
 
         match &e.mesh {
-            SceneMesh::Obj { path } | SceneMesh::Gltf { path } => {
+            SceneMesh::Obj { path } | SceneMesh::Gltf { path } | SceneMesh::Fbx { path } => {
                 if !asset_exists(path, scene_dir) {
                     errors.push(format!(
                         "entity \"{}\": missing mesh asset {}",

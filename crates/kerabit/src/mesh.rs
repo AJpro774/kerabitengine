@@ -35,6 +35,13 @@ impl Mesh {
         })
     }
 
+    /// Load the first mesh from an FBX file (positions, normals, UVs).
+    pub fn load_fbx(path: impl AsRef<Path>) -> Result<Self, AssetError> {
+        Ok(Self {
+            inner: kerabit_assets::load_fbx(path)?.mesh,
+        })
+    }
+
     /// Wrap a render-crate mesh (used by asset helpers).
     #[inline]
     pub(crate) fn from_render(inner: RenderMesh) -> Self {

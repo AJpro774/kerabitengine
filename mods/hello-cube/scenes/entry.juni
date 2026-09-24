@@ -1,0 +1,15 @@
+# Community sample — `main` once, `frame` every Play frame.
+state:
+    cube: i32 = 0
+    t: f32 = 0.0
+
+fn main() -> i32:
+    cube = entity("cube")
+    return 0
+
+fn frame(dt: f32) -> i32:
+    t = t + dt
+    rotate_y(cube, 1.1 * dt)
+    if key_pressed("Escape"):
+        quit()
+    return 0

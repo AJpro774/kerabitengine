@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use kerabit::prelude::*;
 
 fn scene_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scenes/spark.kerabit.json")
+    kerabit::packaged_data_root("scenes", env!("CARGO_MANIFEST_DIR")).join("scenes/spark.kerabit.json")
 }
 
 fn main() {

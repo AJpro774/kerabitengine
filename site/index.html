@@ -79,16 +79,48 @@ cargo run -p spark
 cargo run -p kerabit-editor
 cargo run -p reach</code></pre>
         <p class="note">
-          Full stranger path (site → hello → editor):
+          Editor and examples run on <strong>macOS, Windows, and Linux</strong>
+          from this source tree — they are not Mac-only. You need a working GPU
+          driver on that OS (Metal / Vulkan / DX12). Full stranger path:
           <a href="/docs/getting-started">Getting Started</a>.
         </p>
+      </section>
+
+      <section id="platforms" class="band">
+        <h2>Platforms</h2>
+        <p>
+          Two different things: authors compile the engine, players unzip Reach.
+        </p>
+        <div class="platform-grid">
+          <article class="platform-card">
+            <strong>Author / editor</strong>
+            <p>
+              rustup + cargo on macOS, Windows, and Linux.
+              <code>kerabit-editor</code> is a <strong>dev tool</strong> — no
+              editor zip, not inside player builds.
+            </p>
+            <p class="oses">macOS · Windows · Linux</p>
+          </article>
+          <article class="platform-card">
+            <strong>Play Reach</strong>
+            <p>
+              Published player zips. No Rust. Unzip and run
+              <code>Reach.app</code> or <code>reach.exe</code>.
+            </p>
+            <p class="oses">macOS · Windows</p>
+          </article>
+        </div>
       </section>
 
       <section id="download" class="band">
         <h2>Download Reach</h2>
         <p>
-          Player zips need no Rust toolchain. Unzip and run. Authors who want to
-          rebuild locally use the packaging scripts in the repo.
+          For <strong>players</strong> on macOS and Windows. No Rust toolchain.
+          Unzip and run. Authors who want every Windows exe (Reach, Surge,
+          Spark, Strike, Showcase, editor) run
+          <code>pwsh ./scripts/package-windows.ps1</code> or the
+          <strong>Package Windows</strong> GitHub Action. Mac → PC:
+          <a href="https://github.com/AJpro774/kerabitengine/blob/main/WINDOWS.md">WINDOWS.md</a>.
         </p>
         <div class="download-row">
           <a
@@ -145,9 +177,15 @@ cargo run -p reach</code></pre>
             </a>
           </li>
           <li>
+            <a href="/docs/modding">
+              <strong>Community mods</strong>
+              <span>Folder packs, git clone into mods/, editor Mods window.</span>
+            </a>
+          </li>
+          <li>
             <a href="/docs/editor">
               <strong>Editor guide</strong>
-              <span>Viewport, Play, undo, prefabs, Script panel.</span>
+              <span>Viewport, Juni editor, Assets, FBX, Play, mods.</span>
             </a>
           </li>
         </ul>
@@ -184,9 +222,15 @@ cargo run -p kerabit-editor</code></pre>
             TAA, mesh LOD.
           </li>
           <li>
-            <strong>Editor / games</strong> — Juni script panel, MCP
-            <code>check_juni</code>; Reach campaign, Surge, Spark, Strike,
-            Showcase.
+            <strong>Editor / games</strong> — multiline Juni panel, project
+            Assets browser, FBX meshes, Play with no host HUD or fly camera;
+            Reach, Surge, Spark, Strike, Showcase.
+          </li>
+          <li>
+            <strong>Community mods</strong> — folder packs with
+            <code>mod.kerabit.json</code>, git clone into <code>mods/</code>,
+            editor Mods window. Catalog:
+            <code>community/catalog.json</code>.
           </li>
         </ul>
         <p class="note">

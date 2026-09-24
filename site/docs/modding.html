@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Community mods — Kerabit</title>
+    <meta
+      name="description"
+      content="Share Kerabit content as a folder: mod.kerabit.json, scenes, Juni, meshes. Git clone into mods/ or ~/.kerabit/mods. No store."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="/">Kerabit</a>
+      <nav class="nav-links">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/getting-started">Start</a>
+        <a href="/docs/api-tour">API</a>
+        <a href="/docs/scripting">Scripting</a>
+        <a href="/docs/editor">Editor</a>
+        <a href="/docs/modding">Mods</a>
+        <a href="https://github.com/AJpro774/kerabitengine">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="docs">
+      <nav class="docs-crumb">
+        <a href="/docs/">Docs</a> / Community mods
+      </nav>
+      <h1>Community mods</h1>
+      <p class="docs-lede">
+        Kerabit is open source, so extra content is just a <strong>git folder</strong> —
+        not a store, launcher, or signed package. A pack is a directory with
+        <code>mod.kerabit.json</code> plus scenes, Juni, and assets.
+      </p>
+
+      <h2>Install a pack</h2>
+      <pre class="code"><code>git clone https://github.com/someone/cool-maps.git mods/cool-maps
+# or
+git clone https://github.com/someone/cool-maps.git ~/.kerabit/mods/cool-maps</code></pre>
+      <p>
+        Kerabit also reads <code>KERABIT_MODS</code> (colon-separated on
+        macOS/Linux, <strong>semicolon</strong> on Windows). Disable a pack from
+        the editor <strong>Mods</strong> window; that writes
+        <code>~/.kerabit/mods.json</code> (Windows:
+        <code>%USERPROFILE%\.kerabit\mods.json</code>).
+      </p>
+
+      <h2>Author a pack</h2>
+      <pre class="code"><code>{
+  "id": "cool-maps",
+  "name": "Cool Maps",
+  "version": "0.1.0",
+  "author": "you",
+  "description": "Two extra scenes.",
+  "game": "*",
+  "scenes": ["scenes/entry.kerabit.json"],
+  "homepage": "https://github.com/you/cool-maps"
+}</code></pre>
+      <p>
+        <code>id</code> is kebab-case. <code>game</code> is <code>reach</code>,
+        <code>surge</code>, <code>spark</code>, or <code>*</code>. Scene paths
+        are relative to the pack root. First scene is the Play entry.
+        In the editor: <strong>Mods → Show window → New pack</strong>, or
+        <code>ModIndex::scaffold</code> / MCP <code>kerabit_scaffold_mod</code>.
+      </p>
+      <p>
+        Sample shipped in this repo:
+        <code>mods/hello-cube</code>. Open or Play it from the Mods window.
+      </p>
+
+      <h2>Share it</h2>
+      <p>
+        Push the folder to GitHub. Add a row to
+        <code>community/catalog.json</code> via pull request so others can find
+        it. Games that care can call <code>ModIndex::discover().extra_scenes("reach")</code>
+        to list extra levels.
+      </p>
+
+      <p class="docs-next">
+        Next: <a href="/docs/editor">Editor guide</a> ·
+        <a href="/docs/scripting">Juni scripting</a>
+      </p>
+    </main>
+
+    <footer class="foot">
+      <span>Kerabit Engine</span>
+      <a href="/docs/">All docs</a>
+    </footer>
+  </body>
+</html>

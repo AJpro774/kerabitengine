@@ -1,0 +1,10 @@
+{
+  "id": "hello-cube",
+  "name": "Hello Cube",
+  "version": "0.1.0",
+  "author": "Kerabit",
+  "description": "Sample community mod — a spinning cube. Drop more packs next to this folder or in ~/.kerabit/mods.",
+  "game": "*",
+  "scenes": ["scenes/entry.kerabit.json"],
+  "homepage": "https://github.com/AJpro774/kerabitengine"
+}

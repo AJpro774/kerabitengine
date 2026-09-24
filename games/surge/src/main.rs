@@ -99,7 +99,7 @@ struct BestScores {
 }
 
 fn root_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    kerabit::packaged_data_root("levels", env!("CARGO_MANIFEST_DIR"))
 }
 
 fn level_path(index: usize) -> PathBuf {
@@ -111,14 +111,7 @@ fn asset_path(name: &str) -> PathBuf {
 }
 
 fn progress_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("Kerabit"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".kerabit"))
-    }
+    kerabit::user_data_dir()
 }
 
 fn progress_path() -> PathBuf {

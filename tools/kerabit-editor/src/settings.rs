@@ -55,7 +55,5 @@ impl EditorSettings {
 }
 
 fn settings_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".kerabit").join("editor.json"))
+    kerabit::user_data_dir().map(|h| h.join("editor.json"))
 }

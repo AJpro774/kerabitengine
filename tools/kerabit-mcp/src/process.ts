@@ -103,20 +103,30 @@ export function startRun(
   return rest;
 }
 
+function killTree(pid: number): void {
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    process.kill(pid, "SIGTERM");
+  }
+}
+
 export function stopRun(id: string): string {
   const run = runs.get(id);
   if (!run) {
     return `unknown run id: ${id}`;
   }
   try {
-    // Kill process group when detached
-    process.kill(-run.pid, "SIGTERM");
-  } catch {
-    try {
-      process.kill(run.pid, "SIGTERM");
-    } catch (err) {
-      return `stop failed: ${err instanceof Error ? err.message : String(err)}`;
-    }
+    killTree(run.pid);
+  } catch (err) {
+    return `stop failed: ${err instanceof Error ? err.message : String(err)}`;
   }
   runs.delete(id);
   return `stopped ${id} (pid ${run.pid})`;
