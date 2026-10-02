@@ -335,7 +335,7 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!("kerabit-mods-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         ModIndex::scaffold(&tmp, "hello-cube", "Hello Cube").expect("scaffold");
-        let idx = ModIndex::discover_in(&[tmp.clone()]);
+        let idx = ModIndex::discover_in(std::slice::from_ref(&tmp));
         assert_eq!(idx.packs().len(), 1);
         assert_eq!(idx.packs()[0].manifest.id, "hello-cube");
         assert_eq!(idx.extra_scenes("reach").len(), 1);
@@ -371,7 +371,7 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!("kerabit-mods-rs-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         let dir = ModIndex::scaffold(&tmp, "hello-cube", "Hello").unwrap();
-        let idx = ModIndex::discover_in(&[tmp.clone()]);
+        let idx = ModIndex::discover_in(std::slice::from_ref(&tmp));
         let found = idx.resolve("scenes/entry.juni").expect("resolve");
         assert_eq!(found, dir.join("scenes/entry.juni"));
         let _ = fs::remove_dir_all(&tmp);

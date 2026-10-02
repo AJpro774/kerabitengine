@@ -56,7 +56,7 @@ pub mod anim {
 }
 
 pub mod audio {
-    //! Sound playback (path, volume, loop, spatial, buses, streaming music).
+    //! Sound playback (path, in-memory PCM, volume, loop, spatial, buses, streaming music).
     pub use kerabit_audio::*;
 }
 

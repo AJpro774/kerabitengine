@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 
 const SKIP_DIRS: &[&str] = &[
     "target",
@@ -126,7 +126,7 @@ impl AssetBrowser {
     pub fn ui(&mut self, ui: &mut Ui) -> Option<AssetAction> {
         let mut action = None;
         ui.horizontal(|ui| {
-            ui.heading("Assets");
+            crate::theme::inline_title(ui, "Assets");
             if ui.button("Refresh").clicked() {
                 if let Some(root) = self.root.clone() {
                     self.children.clear();
@@ -137,7 +137,12 @@ impl AssetBrowser {
         egui::ComboBox::from_id_salt("asset_filter")
             .selected_text(self.filter.label())
             .show_ui(ui, |ui| {
-                for f in [Filter::All, Filter::Meshes, Filter::Textures, Filter::Scripts] {
+                for f in [
+                    Filter::All,
+                    Filter::Meshes,
+                    Filter::Textures,
+                    Filter::Scripts,
+                ] {
                     ui.selectable_value(&mut self.filter, f, f.label());
                 }
             });
@@ -149,11 +154,7 @@ impl AssetBrowser {
             );
             return None;
         };
-        ui.label(
-            RichText::new(root.display().to_string())
-                .small()
-                .weak(),
-        );
+        ui.label(RichText::new(root.display().to_string()).small().weak());
         ui.separator();
         egui::ScrollArea::vertical()
             .id_salt("asset_tree")
@@ -165,33 +166,20 @@ impl AssetBrowser {
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(
-                        sel.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("—"),
-                    )
-                    .small(),
+                    RichText::new(sel.file_name().and_then(|n| n.to_str()).unwrap_or("—")).small(),
                 );
                 match kind {
-                    AssetKind::Mesh => {
-                        if ui.button("Apply mesh").clicked() {
-                            action = Some(AssetAction::AssignMesh(sel));
-                        }
+                    AssetKind::Mesh if ui.button("Apply mesh").clicked() => {
+                        action = Some(AssetAction::AssignMesh(sel));
                     }
-                    AssetKind::Texture => {
-                        if ui.button("Apply texture").clicked() {
-                            action = Some(AssetAction::AssignTexture(sel));
-                        }
+                    AssetKind::Texture if ui.button("Apply texture").clicked() => {
+                        action = Some(AssetAction::AssignTexture(sel));
                     }
-                    AssetKind::Script => {
-                        if ui.button("Open").clicked() {
-                            action = Some(AssetAction::OpenScript(sel));
-                        }
+                    AssetKind::Script if ui.button("Open").clicked() => {
+                        action = Some(AssetAction::OpenScript(sel));
                     }
-                    AssetKind::Hdr => {
-                        if ui.button("Apply HDR").clicked() {
-                            action = Some(AssetAction::AssignHdr(sel));
-                        }
+                    AssetKind::Hdr if ui.button("Apply HDR").clicked() => {
+                        action = Some(AssetAction::AssignHdr(sel));
                     }
                     _ => {}
                 }
@@ -378,9 +366,9 @@ pub fn file_row(ui: &mut Ui, current: &str, can_open: bool) -> FileRowEvent {
     ui.horizontal(|ui| {
         let empty = current.trim().is_empty();
         let color = if empty {
-            Color32::from_rgb(0xb7, 0xa9, 0x9a)
+            crate::theme::Palette::SAND
         } else {
-            Color32::from_rgb(0xf3, 0xeb, 0xe1)
+            crate::theme::Palette::INK
         };
         ui.label(RichText::new(file_label(current)).color(color));
         if ui.button("Browse…").clicked() {

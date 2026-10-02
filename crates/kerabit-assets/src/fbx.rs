@@ -58,8 +58,8 @@ pub fn load_fbx(path: impl AsRef<Path>) -> Result<FbxMesh, AssetError> {
         }
         tri.clear();
         let ntris = ufbx::triangulate_face_vec(&mut tri, src, face);
-        for i in 0..(ntris as usize * 3) {
-            let corner = tri[i] as usize;
+        for &corner_idx in tri.iter().take(ntris as usize * 3) {
+            let corner = corner_idx as usize;
             let p = src.vertex_position[corner];
             let (normal, sourced) = if src.vertex_normal.exists {
                 let n = src.vertex_normal[corner];
