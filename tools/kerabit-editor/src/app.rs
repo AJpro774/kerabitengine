@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 use kerabit::{
     map_script_path, Color, ModIndex, ModPack, Prefab, Quat, Scene, SceneCamera, SceneEntity,
     SceneEnvironment, SceneLight, SceneMaterial, SceneMesh, ScriptRuntime, Vec3,
@@ -13,8 +13,11 @@ use crate::assets::{
     self, file_row, mesh_kind_from_path, project_root_from, rel_to, AssetAction, AssetBrowser,
     FileRowEvent, MeshExt,
 };
+use crate::feedback::{self, Cue, EditorSfx};
+use crate::motion::Motion;
 use crate::selection::Selection;
 use crate::settings::EditorSettings;
+use crate::theme::{self, Palette};
 use crate::undo::UndoStack;
 use crate::validation;
 use crate::viewport::Viewport;
@@ -93,6 +96,8 @@ pub struct EditorApp {
     assets: AssetBrowser,
     mods: ModIndex,
     mods_open: bool,
+    motion: Motion,
+    sfx: EditorSfx,
 }
 
 impl EditorApp {
@@ -122,6 +127,8 @@ impl EditorApp {
             assets: AssetBrowser::new(),
             mods: ModIndex::discover(),
             mods_open: false,
+            motion: Motion::default(),
+            sfx: EditorSfx::new(),
         }
     }
 
@@ -194,10 +201,7 @@ impl EditorApp {
                 )
             }
         } else {
-            format!(
-                "Play exited ({})",
-                detail.unwrap_or_else(|| "error".into())
-            )
+            format!("Play exited ({})", detail.unwrap_or_else(|| "error".into()))
         };
     }
 
@@ -275,9 +279,8 @@ impl EditorApp {
             Ok(child) => {
                 self.play_child = Some(child);
                 let hint = if snapshot { "snapshot" } else { "saved scene" };
-                self.status = format!(
-                    "Playing ({hint}) — Esc in play window or Stop; selection kept"
-                );
+                self.status =
+                    format!("Playing ({hint}) — Esc in play window or Stop; selection kept");
             }
             Err(err) => {
                 if let Some(temp) = self.play_temp_path.take() {
@@ -371,8 +374,8 @@ impl EditorApp {
     }
 
     fn sync_script_from_scene(&mut self) {
-        let rel = map_script_path(&self.scene.extras)
-            .or_else(|| map_script_path(&self.scene.components));
+        let rel =
+            map_script_path(&self.scene.extras).or_else(|| map_script_path(&self.scene.components));
         let Some(rel) = rel else {
             self.clear_script_buffer();
             return;
@@ -553,8 +556,13 @@ impl EditorApp {
     }
 
     fn pick_in_project(&self, title: &str, filter: &str, exts: &[&str]) -> Option<PathBuf> {
-        let mut dialog = rfd::FileDialog::new().add_filter(filter, exts).set_title(title);
-        if let Some(dir) = self.project_root().or_else(|| self.scene_dir().map(Path::to_path_buf)) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter(filter, exts)
+            .set_title(title);
+        if let Some(dir) = self
+            .project_root()
+            .or_else(|| self.scene_dir().map(Path::to_path_buf))
+        {
             dialog = dialog.set_directory(dir);
         }
         dialog.pick_file()
@@ -609,7 +617,10 @@ impl EditorApp {
         });
         self.undo.end_gesture();
         self.mark_dirty();
-        self.status = format!("Environment → {}", assets::file_label(&self.stored_rel(&path)));
+        self.status = format!(
+            "Environment → {}",
+            assets::file_label(&self.stored_rel(&path))
+        );
     }
 
     fn apply_asset(&mut self, action: AssetAction) {
@@ -713,7 +724,12 @@ impl EditorApp {
     }
 
     fn unique_name(&self, base: &str) -> String {
-        let existing: Vec<&str> = self.scene.entities.iter().map(|e| e.name.as_str()).collect();
+        let existing: Vec<&str> = self
+            .scene
+            .entities
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
         if !existing.contains(&base) {
             return base.to_string();
         }
@@ -775,7 +791,11 @@ impl EditorApp {
             self.selection.set_many(new_indices);
             self.sync_rename_buf();
             self.mark_dirty();
-            self.status = format!("Duplicated {} entit{}", indices.len(), if indices.len() == 1 { "y" } else { "ies" });
+            self.status = format!(
+                "Duplicated {} entit{}",
+                indices.len(),
+                if indices.len() == 1 { "y" } else { "ies" }
+            );
         }
     }
 
@@ -855,7 +875,11 @@ impl EditorApp {
                     self.status = format!(
                         "Saved prefab ({} entit{}) → {}",
                         prefab.entities.len(),
-                        if prefab.entities.len() == 1 { "y" } else { "ies" },
+                        if prefab.entities.len() == 1 {
+                            "y"
+                        } else {
+                            "ies"
+                        },
                         path.display()
                     );
                 }
@@ -988,10 +1012,7 @@ impl EditorApp {
                 }
             });
             ui.menu_button("Script", |ui| {
-                if ui
-                    .checkbox(&mut self.script_open, "Show panel")
-                    .changed()
-                {
+                if ui.checkbox(&mut self.script_open, "Show panel").changed() {
                     ui.close_menu();
                 }
                 if ui.button("Open .juni…").clicked() {
@@ -1047,7 +1068,10 @@ impl EditorApp {
                 }
                 let has_sel = !self.selection.is_empty();
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Duplicate").shortcut_text("Ctrl+D"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new("Duplicate").shortcut_text("Ctrl+D"),
+                    )
                     .clicked()
                 {
                     self.duplicate_selected();
@@ -1121,7 +1145,7 @@ impl EditorApp {
             ui.separator();
             let playing = self.is_playing();
             if playing {
-                ui.colored_label(Color32::from_rgb(0xe8, 0xff, 0x4a), "▶ live");
+                ui.colored_label(Palette::SUN, "▶ live");
             }
             if ui
                 .add_enabled(!playing, egui::Button::new("▶ Play"))
@@ -1138,10 +1162,11 @@ impl EditorApp {
                 self.stop_play();
             }
         });
+        theme::edge_rule(ui, true);
     }
 
     fn ui_hierarchy(&mut self, ui: &mut Ui) {
-        ui.heading("Hierarchy");
+        theme::title(ui, "Hierarchy");
         ui.horizontal(|ui| {
             if ui.button("+ Add").clicked() {
                 self.add_entity();
@@ -1159,18 +1184,25 @@ impl EditorApp {
                 self.delete_selected();
             }
         });
-        if self.selection.len() >= 2 {
-            ui.horizontal(|ui| {
-                ui.label("Align");
-                if ui.button("X").clicked() {
-                    self.align_selected(AlignAxis::X);
-                }
-                if ui.button("Y").clicked() {
-                    self.align_selected(AlignAxis::Y);
-                }
-                if ui.button("Z").clicked() {
-                    self.align_selected(AlignAxis::Z);
-                }
+        let show_align = self.selection.len() >= 2;
+        let align_t =
+            ui.ctx()
+                .animate_bool_with_time(egui::Id::new("hierarchy_align"), show_align, 0.16);
+        if align_t > 0.01 {
+            ui.scope(|ui| {
+                ui.set_opacity(align_t);
+                ui.horizontal(|ui| {
+                    ui.label("Align");
+                    if ui.button("X").clicked() {
+                        self.align_selected(AlignAxis::X);
+                    }
+                    if ui.button("Y").clicked() {
+                        self.align_selected(AlignAxis::Y);
+                    }
+                    if ui.button("Z").clicked() {
+                        self.align_selected(AlignAxis::Z);
+                    }
+                });
             });
         }
         ui.separator();
@@ -1204,6 +1236,15 @@ impl EditorApp {
                 };
                 let selected = self.selection.contains(i);
                 let resp = ui.selectable_label(selected, label);
+                let glow = self.motion.selection_glow();
+                if selected && glow > 0.02 {
+                    ui.painter().rect_stroke(
+                        resp.rect,
+                        4.0,
+                        egui::Stroke::new(1.0_f32, Palette::SUN.gamma_multiply(glow)),
+                        egui::StrokeKind::Inside,
+                    );
+                }
                 if resp.clicked() {
                     clicked = Some(i);
                     multi = ui.input(|inp| inp.modifiers.shift || inp.modifiers.command);
@@ -1222,10 +1263,14 @@ impl EditorApp {
     }
 
     fn ui_inspector(&mut self, ui: &mut Ui) {
-        ui.heading("Inspector");
+        theme::title(ui, "Inspector");
         let Some(i) = self.selection.primary() else {
             ui.label("Select an entity in the hierarchy.");
-            ui.label(RichText::new("Shift+click for multi-select.").weak().small());
+            ui.label(
+                RichText::new("Shift+click for multi-select.")
+                    .weak()
+                    .small(),
+            );
             return;
         };
         if i >= self.scene.entities.len() {
@@ -1277,15 +1322,18 @@ impl EditorApp {
             .unwrap_or_default();
         let mut parent = self.scene.entities[i].parent.clone();
         let mut tags = self.scene.entities[i].tags.clone();
-        let mut script_rel =
-            map_script_path(&self.scene.entities[i].extras).unwrap_or_default();
+        let mut script_rel = map_script_path(&self.scene.entities[i].extras).unwrap_or_default();
 
         let mut dirty = false;
 
-        ui.label(RichText::new(&self.scene.entities[i].name).strong());
+        ui.label(
+            RichText::new(&self.scene.entities[i].name)
+                .strong()
+                .color(Palette::SUN),
+        );
         ui.separator();
 
-        ui.label("Tags / roles");
+        theme::section(ui, "Tags / roles");
         ui.horizontal_wrapped(|ui| {
             for role in ["player", "goal", "ground", "wall", "hazard"] {
                 let mut on = tags.iter().any(|t| t == role);
@@ -1308,7 +1356,7 @@ impl EditorApp {
         );
 
         ui.separator();
-        ui.label("Transform");
+        theme::section(ui, "Transform");
         dirty |= ui
             .horizontal(|ui| {
                 ui.label("Position");
@@ -1353,7 +1401,7 @@ impl EditorApp {
             .inner;
 
         ui.separator();
-        ui.label("Mesh");
+        theme::section(ui, "Mesh");
         egui::ComboBox::from_id_salt("mesh_kind")
             .selected_text(mesh_kind.label())
             .show_ui(ui, |ui| {
@@ -1375,10 +1423,15 @@ impl EditorApp {
         match mesh_kind {
             MeshKind::Plane => {
                 dirty |= ui
-                    .add(egui::DragValue::new(&mut plane_size).speed(0.1).prefix("size "))
+                    .add(
+                        egui::DragValue::new(&mut plane_size)
+                            .speed(0.1)
+                            .prefix("size "),
+                    )
                     .changed();
             }
-            MeshKind::Obj | MeshKind::Gltf | MeshKind::Fbx => match file_row(ui, &mesh_path, false) {
+            MeshKind::Obj | MeshKind::Gltf | MeshKind::Fbx => match file_row(ui, &mesh_path, false)
+            {
                 FileRowEvent::Browse => {
                     if let Some(path) =
                         self.pick_in_project("Mesh", "Mesh", &["obj", "glb", "gltf", "fbx"])
@@ -1407,7 +1460,7 @@ impl EditorApp {
         }
 
         ui.separator();
-        ui.label("Material");
+        theme::section(ui, "Material");
         dirty |= ui.color_edit_button_rgb(&mut color).changed();
         dirty |= ui
             .add(
@@ -1443,7 +1496,7 @@ impl EditorApp {
         }
 
         ui.separator();
-        ui.label("Parent");
+        theme::section(ui, "Parent");
         let entity_names: Vec<String> = self
             .scene
             .entities
@@ -1470,7 +1523,7 @@ impl EditorApp {
             });
 
         ui.separator();
-        ui.label("Juni script");
+        theme::section(ui, "Juni script");
         match file_row(ui, &script_rel, true) {
             FileRowEvent::Browse => {
                 if let Some(path) = self.pick_in_project("Juni script", "Juni", &["juni"]) {
@@ -1550,15 +1603,13 @@ impl EditorApp {
         }
 
         // End continuous-edit gesture when pointer is released.
-        if ui.input(|inp| {
-            inp.pointer.any_released() && !inp.pointer.any_down()
-        }) {
+        if ui.input(|inp| inp.pointer.any_released() && !inp.pointer.any_down()) {
             self.undo.end_gesture();
         }
     }
 
     fn ui_environment(&mut self, ui: &mut Ui) {
-        ui.heading("Environment");
+        theme::title(ui, "Environment");
         let mut dirty = false;
 
         let mut clear = color_to_rgb(self.scene.clear_color);
@@ -1571,7 +1622,7 @@ impl EditorApp {
         });
 
         ui.separator();
-        ui.label("Camera");
+        theme::section(ui, "Camera");
         let mut eye = [
             self.scene.camera.eye.x,
             self.scene.camera.eye.y,
@@ -1605,7 +1656,7 @@ impl EditorApp {
         });
 
         ui.separator();
-        ui.label("Sun");
+        theme::section(ui, "Sun");
         let mut dir = [
             self.scene.light.direction.x,
             self.scene.light.direction.y,
@@ -1625,7 +1676,7 @@ impl EditorApp {
         dirty |= ui.color_edit_button_rgb(&mut light_color).changed();
 
         ui.separator();
-        ui.label("IBL environment");
+        theme::section(ui, "IBL environment");
         let hdr_label = self
             .scene
             .environment
@@ -1649,7 +1700,12 @@ impl EditorApp {
             _ => {}
         }
         if self.scene.environment.is_some() {
-            let mut intensity = self.scene.environment.as_ref().map(|e| e.intensity).unwrap_or(1.0);
+            let mut intensity = self
+                .scene
+                .environment
+                .as_ref()
+                .map(|e| e.intensity)
+                .unwrap_or(1.0);
             if ui
                 .add(
                     egui::DragValue::new(&mut intensity)
@@ -1667,7 +1723,7 @@ impl EditorApp {
         }
 
         ui.separator();
-        ui.label("Scene Juni script");
+        theme::section(ui, "Scene Juni script");
         let mut scene_script = map_script_path(&self.scene.extras).unwrap_or_default();
         match file_row(ui, &scene_script, true) {
             FileRowEvent::Browse => {
@@ -1723,6 +1779,7 @@ impl EditorApp {
     }
 
     fn ui_status(&self, ui: &mut Ui, errors: &[String]) {
+        theme::edge_rule(ui, false);
         let path = self
             .path
             .as_ref()
@@ -1730,33 +1787,38 @@ impl EditorApp {
             .unwrap_or_else(|| "(unsaved)".into());
         let dirty = if self.dirty { "modified" } else { "clean" };
         let playing = self.is_playing();
+        let glow = self.motion.status_glow();
+        let error_status = feedback::cue_for_status(&self.status) == Some(Cue::Error);
         ui.horizontal(|ui| {
             if playing {
-                ui.colored_label(
-                    Color32::from_rgb(0xe8, 0xff, 0x4a),
-                    "● PLAYING",
-                );
+                ui.colored_label(Palette::SUN, "● PLAYING");
                 ui.separator();
             }
             ui.label(format!("{dirty}  ·  {path}"));
             ui.separator();
-            if playing {
-                ui.colored_label(Color32::from_rgb(0xe8, 0xff, 0x4a), &self.status);
+            ui.add_space(glow * 6.0);
+            let rest = if error_status {
+                Palette::ERROR
+            } else if playing {
+                Palette::SUN
             } else {
-                ui.label(&self.status);
-            }
+                Palette::INK
+            };
+            let hot = if error_status {
+                Palette::ERROR
+            } else {
+                Palette::SUN
+            };
+            ui.colored_label(theme::mix(rest, hot, glow), &self.status);
             if !errors.is_empty() {
                 ui.separator();
-                ui.colored_label(
-                    Color32::from_rgb(220, 80, 80),
-                    format!("{} issue(s)", errors.len()),
-                );
+                ui.colored_label(Palette::ERROR, format!("{} issue(s)", errors.len()));
             }
         });
         if !errors.is_empty() {
             ui.separator();
             for err in errors.iter().take(6) {
-                ui.colored_label(Color32::from_rgb(220, 80, 80), err);
+                ui.colored_label(Palette::ERROR, err);
             }
             if errors.len() > 6 {
                 ui.label(format!("…and {} more", errors.len() - 6));
@@ -1764,9 +1826,44 @@ impl EditorApp {
         }
     }
 
+    /// Slide the Juni panel open and closed without dropping the user's resized height.
+    ///
+    /// The tween uses a separate panel id so the real panel's saved size stays put.
+    fn show_script_panel(&mut self, ctx: &egui::Context) {
+        let t = ctx.animate_bool_with_time(
+            egui::Id::new("script_panel_reveal"),
+            self.script_open,
+            0.18,
+        );
+        if t <= 0.0 {
+            return;
+        }
+        let height_id = egui::Id::new("script_panel_full_height");
+        if t >= 1.0 {
+            let shown = egui::TopBottomPanel::bottom("script_panel")
+                .resizable(true)
+                .default_height(280.0)
+                .min_height(160.0)
+                .show(ctx, |ui| {
+                    self.ui_script_panel(ui);
+                });
+            let height = shown.response.rect.height();
+            ctx.data_mut(|d| d.insert_temp(height_id, height));
+        } else {
+            let full = ctx.data(|d| d.get_temp::<f32>(height_id)).unwrap_or(280.0);
+            egui::TopBottomPanel::bottom("script_panel_tween")
+                .resizable(false)
+                .exact_height((full * t).max(1.0))
+                .show(ctx, |ui| {
+                    ui.set_opacity(t);
+                    self.ui_script_panel(ui);
+                });
+        }
+    }
+
     fn ui_script_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.heading("Juni");
+            theme::inline_title(ui, "Juni");
             let bind = match &self.script_bind {
                 ScriptBind::Scene => "scene".to_string(),
                 ScriptBind::Entity(name) => format!("entity `{name}`"),
@@ -1783,7 +1880,7 @@ impl EditorApp {
             let lines = self.script_text.lines().count().max(1);
             ui.label(RichText::new(format!("{lines} lines")).weak().small());
             if self.script_dirty {
-                ui.colored_label(Color32::from_rgb(220, 160, 60), "modified");
+                ui.colored_label(Palette::CORAL, "modified");
             }
             if ui.button("New").clicked() {
                 self.new_scene_script();
@@ -1825,7 +1922,7 @@ impl EditorApp {
             }
         });
         if let Some(err) = &self.script_error {
-            ui.colored_label(Color32::from_rgb(220, 80, 80), err);
+            ui.colored_label(Palette::ERROR, err);
         }
         let mut text = std::mem::take(&mut self.script_text);
         let response = ui.add(
@@ -1847,9 +1944,7 @@ impl EditorApp {
     }
 
     fn ui_mods_window(&mut self, ctx: &egui::Context) {
-        if !self.mods_open {
-            return;
-        }
+        // Call every frame so egui can fade the window in and out (defaults on).
         let mut open = self.mods_open;
         egui::Window::new("Mods")
             .open(&mut open)
@@ -2035,9 +2130,14 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let dt = ctx.input(|i| i.stable_dt);
+        self.motion.tick(dt);
         self.poll_play_child();
         self.handle_shortcuts(ctx);
         self.persist_snap_if_needed();
+
+        let status_before = self.status.clone();
+        let selection_before = self.selection.as_slice().to_vec();
 
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title()));
 
@@ -2053,15 +2153,7 @@ impl eframe::App for EditorApp {
             self.ui_status(ui, &errors);
         });
 
-        if self.script_open {
-            egui::TopBottomPanel::bottom("script_panel")
-                .resizable(true)
-                .default_height(280.0)
-                .min_height(160.0)
-                .show(ctx, |ui| {
-                    self.ui_script_panel(ui);
-                });
-        }
+        self.show_script_panel(ctx);
 
         let mut asset_action = None;
         self.assets.sync_root(self.project_root());
@@ -2108,6 +2200,7 @@ impl eframe::App for EditorApp {
                 &mut self.undo,
                 &mut || dirty_flag = true,
                 &mut self.status,
+                self.motion.selection_glow(),
             );
             if dirty_flag {
                 self.dirty = true;
@@ -2118,8 +2211,26 @@ impl eframe::App for EditorApp {
             }
         });
 
-        // Keep polling while a play child is alive.
-        if self.is_playing() {
+        let selection_changed = self.selection.as_slice() != selection_before.as_slice();
+        if selection_changed {
+            self.motion.nudge_selection();
+        }
+        let status_cue = if self.status != status_before {
+            feedback::cue_for_status(&self.status)
+        } else {
+            None
+        };
+        if let Some(cue) = status_cue {
+            self.sfx.play(cue);
+            self.motion.nudge_status();
+        } else if selection_changed && self.status == status_before {
+            // Hierarchy picks do not rewrite the status line.
+            self.sfx.play(Cue::Select);
+        }
+        self.sfx.maintain();
+
+        // Play mode already polls. Flashes need extra frames; panel and window tweens repaint themselves.
+        if self.is_playing() || self.motion.busy() {
             ctx.request_repaint();
         }
     }

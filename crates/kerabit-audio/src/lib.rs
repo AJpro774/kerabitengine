@@ -1,6 +1,7 @@
 //! Audio playback for Kerabit (rodio / cpal).
 //!
 //! - Non-spatial SFX (`play` / `play_with`) on the **sfx** bus
+//! - In-memory PCM one-shots (`play_pcm`) on the **sfx** bus (UI cues, no temp file)
 //! - Stereo positional attenuation (`play_at` / `play_at_with`) via rodio `SpatialSink`
 //! - Mix buses: **master** × **sfx** / **music**
 //! - Streaming music (`play_music` / `play_music_with`) — WAV decode without full-file buffer
@@ -121,6 +122,9 @@ pub enum AudioError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    /// PCM arguments were rejected (channel count, sample rate, or length).
+    #[error("invalid pcm: {0}")]
+    Pcm(String),
 }
 
 type Samples = Buffered<Decoder<BufReader<File>>>;
@@ -273,6 +277,61 @@ impl AudioEngine {
     /// Play a sound file once on the sfx bus at full voice gain.
     pub fn play(&mut self, path: impl AsRef<Path>) -> Result<SoundId, AudioError> {
         self.play_with(path, 1.0, false)
+    }
+
+    /// Play interleaved `f32` PCM once on the sfx bus (non-spatial).
+    ///
+    /// `samples` is in `-1.0..=1.0`, interleaved when `channels` is 2.
+    /// Empty input or a null engine returns a silent id. Used for short UI cues
+    /// so callers do not have to write a WAV to disk.
+    pub fn play_pcm(
+        &mut self,
+        samples: &[f32],
+        sample_rate: u32,
+        channels: u16,
+        volume: f32,
+    ) -> Result<SoundId, AudioError> {
+        self.maintain();
+
+        let base = volume.max(0.0);
+        let id = SoundId(self.next_id);
+        self.next_id += 1;
+
+        if samples.is_empty() {
+            return Ok(id);
+        }
+        if !(1..=2).contains(&channels) || sample_rate == 0 {
+            return Err(AudioError::Pcm(
+                "expected 1 or 2 channels and a non-zero sample rate".into(),
+            ));
+        }
+        if samples.len() % channels as usize != 0 {
+            return Err(AudioError::Pcm(
+                "sample count is not divisible by channel count".into(),
+            ));
+        }
+
+        let Some(handle) = self.handle.as_ref() else {
+            return Ok(id);
+        };
+
+        let gain = self.effective_gain(MixBus::Sfx, base);
+        let sink = Sink::try_new(handle).map_err(|e| AudioError::Device(e.to_string()))?;
+        sink.set_volume(gain);
+        sink.append(rodio::buffer::SamplesBuffer::new(
+            channels,
+            sample_rate,
+            samples.to_vec(),
+        ));
+        self.voices.push(Voice {
+            id,
+            bus: MixBus::Sfx,
+            base_volume: base,
+            out: VoiceOut::Flat(sink),
+            emitter: None,
+            stream_loop: None,
+        });
+        Ok(id)
     }
 
     /// Play a sound file with per-voice volume and optional loop (sfx bus, non-spatial).
@@ -574,11 +633,7 @@ fn append_buffered_flat(sink: &Sink, path: &Path, loop_: bool) -> Result<(), Aud
     Ok(())
 }
 
-fn append_buffered_spatial(
-    sink: &SpatialSink,
-    path: &Path,
-    loop_: bool,
-) -> Result<(), AudioError> {
+fn append_buffered_spatial(sink: &SpatialSink, path: &Path, loop_: bool) -> Result<(), AudioError> {
     let source = load_buffered(path)?;
     if loop_ {
         sink.append(source.repeat_infinite());
@@ -640,12 +695,23 @@ mod tests {
     }
 
     #[test]
+    fn null_engine_play_pcm_is_safe() {
+        let mut audio = AudioEngine::null();
+        let id = audio
+            .play_pcm(&[0.0, 0.2, -0.2, 0.0], 22_050, 1, 0.4)
+            .unwrap();
+        audio.stop(id);
+        audio.maintain();
+        assert!(audio.play_pcm(&[], 22_050, 1, 1.0).is_ok());
+        assert!(audio.play_pcm(&[0.1, -0.1], 22_050, 2, 1.0).is_ok());
+        assert!(audio.play_pcm(&[0.1], 22_050, 2, 1.0).is_err());
+        assert!(audio.play_pcm(&[0.1], 0, 1, 1.0).is_err());
+        assert!(audio.play_pcm(&[0.1, 0.2, 0.3], 22_050, 3, 1.0).is_err());
+    }
+
+    #[test]
     fn listener_ears_are_separated() {
-        let listener = AudioListener::from_look_at(
-            Vec3::new(0.0, 1.0, 5.0),
-            Vec3::ZERO,
-            Vec3::Y,
-        );
+        let listener = AudioListener::from_look_at(Vec3::new(0.0, 1.0, 5.0), Vec3::ZERO, Vec3::Y);
         let (left, right) = listener.ear_positions();
         let dx = left[0] - right[0];
         let dy = left[1] - right[1];
@@ -656,8 +722,7 @@ mod tests {
 
     #[test]
     fn play_existing_wav_on_null_still_ok() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/assets/beep.wav");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/assets/beep.wav");
         assert!(path.is_file(), "fixture missing: {}", path.display());
         let mut audio = AudioEngine::null();
         assert!(audio.play(&path).is_ok());

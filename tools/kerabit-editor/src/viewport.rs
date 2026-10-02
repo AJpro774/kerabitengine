@@ -6,9 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use egui::Ui;
 use kerabit::{Color, Light, Mat4, Quat, Scene, SceneEntity, SceneMesh, Vec3};
-use kerabit_render::{
-    pick_closest, Aabb, DrawItem, Mesh, MeshId, OffscreenLitRenderer, TextureId,
-};
+use kerabit_render::{pick_closest, Aabb, DrawItem, Mesh, MeshId, OffscreenLitRenderer, TextureId};
 
 use crate::gizmo::{self, GizmoEdit, GizmoMode, GizmoState};
 use crate::orbit::OrbitCamera;
@@ -171,6 +169,7 @@ impl Viewport {
         undo: &mut UndoStack,
         mark_dirty: &mut dyn FnMut(),
         status: &mut String,
+        selection_glow: f32,
     ) {
         self.ui_toolbar(ui);
 
@@ -186,7 +185,16 @@ impl Viewport {
             }
         });
 
-        egui::Frame::dark_canvas(ui.style()).show(ui, |ui| {
+        let glow = selection_glow.clamp(0.0, 1.0);
+        let frame_alpha = 0.35 + glow * 0.65;
+        let canvas = egui::Frame::new()
+            .fill(crate::theme::Palette::SUNKEN)
+            .stroke(egui::Stroke::new(
+                1.0_f32,
+                crate::theme::Palette::SUN.gamma_multiply(frame_alpha),
+            ))
+            .corner_radius(egui::CornerRadius::ZERO);
+        canvas.show(ui, |ui| {
             let (rect, response) =
                 ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
 
@@ -379,15 +387,16 @@ impl Viewport {
                         if let Some(p) = project_point(e.at, &cam, rect) {
                             let primary = selection.primary() == Some(i);
                             let color = if primary {
-                                egui::Color32::from_rgb(255, 220, 80)
+                                crate::theme::Palette::SUN
                             } else {
-                                egui::Color32::from_rgb(120, 180, 255)
+                                crate::theme::Palette::MARKER
                             };
-                            painter.circle_stroke(
-                                p,
-                                if primary { 7.0 } else { 5.0 },
-                                egui::Stroke::new(1.5_f32, color),
-                            );
+                            let radius = if primary {
+                                7.0 * (1.0 + glow * 0.35)
+                            } else {
+                                5.0
+                            };
+                            painter.circle_stroke(p, radius, egui::Stroke::new(1.5_f32, color));
                         }
                     }
                 }
@@ -619,14 +628,7 @@ fn world_matrices(entities: &[SceneEntity]) -> Vec<Mat4> {
     }
 
     for i in 0..entities.len() {
-        resolve(
-            i,
-            entities,
-            &name_to_i,
-            &locals,
-            &mut worlds,
-            &mut visiting,
-        );
+        resolve(i, entities, &name_to_i, &locals, &mut worlds, &mut visiting);
     }
     worlds
 }
