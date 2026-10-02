@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1c1410" />
     <title>Kerabit — lean native Rust 3D engine</title>
     <meta
       name="description"
@@ -264,41 +265,6 @@ cargo run -p kerabit-editor</code></pre>
       <a href="/docs/">Docs</a>
     </footer>
 
-    <script>
-      const brand = document.querySelector(".brand");
-      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const heroVideo = document.querySelector(".hero-video");
-      if (reduce && heroVideo) {
-        heroVideo.pause();
-        heroVideo.removeAttribute("autoplay");
-        document.documentElement.classList.add("reduce-motion");
-      }
-      if (brand && !reduce) {
-        brand.animate(
-          [
-            { opacity: 0, letterSpacing: "0.35em", transform: "translateY(12px)" },
-            { opacity: 1, letterSpacing: "0.06em", transform: "translateY(0)" },
-          ],
-          { duration: 1100, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" }
-        );
-      }
-      document
-        .querySelectorAll(".hero h1, .hero .lede, .cta, .hero-credit")
-        .forEach((el, i) => {
-          if (reduce) return;
-          el.animate(
-            [
-              { opacity: 0, transform: "translateY(18px)" },
-              { opacity: 1, transform: "translateY(0)" },
-            ],
-            {
-              duration: 800,
-              delay: 280 + i * 120,
-              easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-              fill: "forwards",
-            }
-          );
-        });
-    </script>
+    <script src="/chrome.js" defer></script>
   </body>
 </html>
